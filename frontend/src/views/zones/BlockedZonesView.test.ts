@@ -18,6 +18,7 @@ import { triggerDownload } from "../../lib/download"
 import { useConnectionStore } from "../../stores/connection"
 import { useAuthStore } from "../../stores/auth"
 import BlockedZonesView from "./BlockedZonesView.vue"
+import ZoneTreeNode from "../../components/zones/ZoneTreeNode.vue"
 
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
@@ -42,13 +43,14 @@ describe("BlockedZonesView", () => {
     vi.mocked(updateBlockListUrls).mockReset()
   })
 
-  it("renders the real blocked zone list (13 TLD-level entries on the live server)", async () => {
+  it("renders the real blocked zone list as a tree of root domains (13 TLD-level entries on the live server)", async () => {
     vi.mocked(listBlockedZones).mockResolvedValue({
       response: { domain: "", zones: ["co", "com", "gg", "guru", "la"], records: [] },
     })
     const wrapper = await mountConnected()
 
-    expect(wrapper.findAll("tbody tr")).toHaveLength(5)
+    const rootNodes = wrapper.findAllComponents(ZoneTreeNode).filter((c) => c.props("depth") === 0)
+    expect(rootNodes).toHaveLength(5)
     expect(wrapper.text()).toContain("com")
   })
 
@@ -78,6 +80,28 @@ describe("BlockedZonesView", () => {
     const wrapper = await mountConnected()
 
     expect(wrapper.find("#blocked-error").text()).toBe("Invalid token or session expired.")
+  })
+
+  it("expands a root domain into its real subdomains on click, instead of showing only the misleading top-level list", async () => {
+    // Regression: the page used to show only the 13 root-level TLD
+    // labels as if they were the full blocked list — "com" alone
+    // actually holds 40+ blocked domains underneath it on the live
+    // server, invisible in the old flat view.
+    vi.mocked(listBlockedZones).mockImplementation((_creds, domain = "") => {
+      if (domain === "") return Promise.resolve({ response: { domain: "", zones: ["com"], records: [] } })
+      if (domain === "com") {
+        return Promise.resolve({ response: { domain: "com", zones: ["pornhub.com", "tiktok.com"], records: [] } })
+      }
+      return Promise.resolve({ response: { domain, zones: [], records: [] } })
+    })
+    const wrapper = await mountConnected()
+
+    await wrapper.get("#blocked-zone-tree button").trigger("click")
+    await flushPromises()
+
+    expect(listBlockedZones).toHaveBeenCalledWith(expect.anything(), "com")
+    expect(wrapper.text()).toContain("pornhub.com")
+    expect(wrapper.text()).toContain("tiktok.com")
   })
 
   describe("block list sources", () => {
