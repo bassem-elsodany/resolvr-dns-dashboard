@@ -6,8 +6,8 @@ import { navSections } from "./navSections"
 import AppShell from "./AppShell.vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useServerUpdateStore } from "../../stores/serverUpdate"
-import OverviewView from "../../views/OverviewView.vue"
-import ClientsView from "../../views/ClientsView.vue"
+import OverviewView from "../../views/overview/OverviewView.vue"
+import ClientsView from "../../views/monitoring/ClientsView.vue"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")

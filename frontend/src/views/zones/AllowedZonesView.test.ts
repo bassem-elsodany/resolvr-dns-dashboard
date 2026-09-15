@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, listAllowedZones: vi.fn(), exportAllowedZones: vi.fn() }
 })
-vi.mock("../lib/download", () => ({ triggerDownload: vi.fn() }))
+vi.mock("../../lib/download", () => ({ triggerDownload: vi.fn() }))
 
-import { listAllowedZones, exportAllowedZones, TechnitiumApiError } from "../api/technitium"
-import { triggerDownload } from "../lib/download"
-import { useConnectionStore } from "../stores/connection"
+import { listAllowedZones, exportAllowedZones, TechnitiumApiError } from "../../api/technitium"
+import { triggerDownload } from "../../lib/download"
+import { useConnectionStore } from "../../stores/connection"
 import AllowedZonesView from "./AllowedZonesView.vue"
 
 function flushPromises() {

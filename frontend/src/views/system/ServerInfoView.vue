@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
-import { useServerUpdateStore } from "../stores/serverUpdate"
-import { getSettings, TechnitiumApiError, type DnsSettings } from "../api/technitium"
+import { useConnectionStore } from "../../stores/connection"
+import { useServerUpdateStore } from "../../stores/serverUpdate"
+import { getSettings, TechnitiumApiError, type DnsSettings } from "../../api/technitium"
 
 const connection = useConnectionStore()
 const serverUpdate = useServerUpdateStore()

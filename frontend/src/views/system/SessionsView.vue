@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
-import { listAdminSessions, TechnitiumApiError, type AdminSession } from "../api/technitium"
+import { useConnectionStore } from "../../stores/connection"
+import { listAdminSessions, TechnitiumApiError, type AdminSession } from "../../api/technitium"
 
 const connection = useConnectionStore()
 

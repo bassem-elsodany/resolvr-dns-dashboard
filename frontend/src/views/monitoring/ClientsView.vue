@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
-import { getTopStats, queryLogs, TechnitiumApiError, type StatsDuration } from "../api/technitium"
-import { durationToRange } from "../lib/dateRange"
+import { useConnectionStore } from "../../stores/connection"
+import { getTopStats, queryLogs, TechnitiumApiError, type StatsDuration } from "../../api/technitium"
+import { durationToRange } from "../../lib/dateRange"
 
 const connection = useConnectionStore()
 

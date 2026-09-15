@@ -1,22 +1,23 @@
 import { createRouter, createWebHistory } from "vue-router"
-import OverviewView from "../views/OverviewView.vue"
-import ClientsView from "../views/ClientsView.vue"
-import QueryLogsView from "../views/QueryLogsView.vue"
-import CacheView from "../views/CacheView.vue"
-import ZonesView from "../views/ZonesView.vue"
-import AllowedZonesView from "../views/AllowedZonesView.vue"
-import BlockedZonesView from "../views/BlockedZonesView.vue"
-import DhcpView from "../views/DhcpView.vue"
-import ResolverView from "../views/ResolverView.vue"
-import AppsView from "../views/AppsView.vue"
-import ServerInfoView from "../views/ServerInfoView.vue"
-import SessionsView from "../views/SessionsView.vue"
-import ConnectView from "../views/ConnectView.vue"
+import OverviewView from "../views/overview/OverviewView.vue"
+import ClientsView from "../views/monitoring/ClientsView.vue"
+import QueryLogsView from "../views/monitoring/QueryLogsView.vue"
+import CacheView from "../views/monitoring/CacheView.vue"
+import ZonesView from "../views/zones/ZonesView.vue"
+import AllowedZonesView from "../views/zones/AllowedZonesView.vue"
+import BlockedZonesView from "../views/zones/BlockedZonesView.vue"
+import DhcpView from "../views/network/DhcpView.vue"
+import ResolverView from "../views/tools/ResolverView.vue"
+import AppsView from "../views/system/AppsView.vue"
+import ServerInfoView from "../views/system/ServerInfoView.vue"
+import SessionsView from "../views/system/SessionsView.vue"
+import ConnectView from "../views/connection/ConnectView.vue"
 
 // One route per sidebar item in the approved wireframe
 // (https://claude.ai/artifact/KkUP4PePeDz4kVDA7ULDpM). All render inside
 // AppShell's <router-view>, so the sidebar/topbar chrome never remounts
-// between pages.
+// between pages. Views live under src/views/<feature-area>/, mirroring
+// the sidebar's nav sections (see components/layout/navSections.ts).
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
