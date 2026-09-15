@@ -55,6 +55,39 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
     res.json({ status: "ok" });
   });
 
+  // Lets an admin amend the block-list feed subscriptions shown on the
+  // Blocked Zones page (see BlockedZonesView.vue), not just view them.
+  // urls is the raw list as Technitium stores it — comment lines (e.g.
+  // "# Hagezi PRO++") and URLs both, in order — sent back as one
+  // comma-separated string per /api/settings/set's contract. An empty
+  // list is sent as the literal "false", which is how that endpoint
+  // documents clearing the value entirely.
+  router.put("/block-list-urls", async (req, res) => {
+    const { urls } = req.body ?? {};
+    if (!Array.isArray(urls) || !urls.every((u) => typeof u === "string")) {
+      res.status(400).json({ error: "urls must be an array of strings" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const value = urls.length === 0 ? "false" : urls.join(",");
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/settings/set",
+      { blockListUrls: value },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
   router.post("/revoke-session", async (req, res) => {
     const { partialToken } = req.body ?? {};
     if (typeof partialToken !== "string" || !partialToken) {

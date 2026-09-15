@@ -112,3 +112,7 @@ export function forceUpdateBlockLists(): Promise<{ status: string }> {
 export function revokeSession(partialToken: string): Promise<{ status: string }> {
   return call("/api/actions/revoke-session", { method: "POST", body: JSON.stringify({ partialToken }) })
 }
+
+export function updateBlockListUrls(urls: string[]): Promise<{ status: string }> {
+  return call("/api/actions/block-list-urls", { method: "PUT", body: JSON.stringify({ urls }) })
+}

@@ -48,6 +48,44 @@ describe("actionRoutes", () => {
     expect(String(calledUrl)).toBe("http://10.0.60.60:5380/api/settings/forceUpdateBlockLists");
   });
 
+  it("updates the block list URLs, comma-joined in order, comments and URLs alike", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app)
+      .put("/api/actions/block-list-urls")
+      .send({ urls: ["# Hagezi PRO++", "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt"] });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/settings/set");
+    expect(url.searchParams.get("blockListUrls")).toBe(
+      "# Hagezi PRO++,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.plus.txt",
+    );
+  });
+
+  it("sends 'false' to clear the block list URLs when saved as an empty list", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/actions/block-list-urls").send({ urls: [] });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    expect(new URL(String(calledUrl)).searchParams.get("blockListUrls")).toBe("false");
+  });
+
+  it("rejects a non-array urls body, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/actions/block-list-urls").send({ urls: "not-an-array" });
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("revokes a session by partialToken", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok", response: {} }));
     const { app } = testApp(fetchImpl);

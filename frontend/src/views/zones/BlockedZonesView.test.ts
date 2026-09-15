@@ -7,10 +7,16 @@ vi.mock("../../api/technitium", async () => {
   return { ...actual, listBlockedZones: vi.fn(), exportBlockedZones: vi.fn(), getSettings: vi.fn() }
 })
 vi.mock("../../lib/download", () => ({ triggerDownload: vi.fn() }))
+vi.mock("../../api/app", async () => {
+  const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
+  return { ...actual, updateBlockListUrls: vi.fn() }
+})
 
 import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { updateBlockListUrls, AppApiError } from "../../api/app"
 import { triggerDownload } from "../../lib/download"
 import { useConnectionStore } from "../../stores/connection"
+import { useAuthStore } from "../../stores/auth"
 import BlockedZonesView from "./BlockedZonesView.vue"
 
 function flushPromises() {
@@ -33,6 +39,7 @@ describe("BlockedZonesView", () => {
     vi.mocked(exportBlockedZones).mockReset()
     vi.mocked(triggerDownload).mockReset()
     vi.mocked(getSettings).mockReset().mockResolvedValue({ response: {} as never })
+    vi.mocked(updateBlockListUrls).mockReset()
   })
 
   it("renders the real blocked zone list (13 TLD-level entries on the live server)", async () => {
@@ -126,6 +133,115 @@ describe("BlockedZonesView", () => {
       const wrapper = await mountConnected()
 
       expect(wrapper.find("#block-list-sources-error").text()).toBe("Invalid token or session expired.")
+    })
+
+    it("hides the Edit control for a viewer", async () => {
+      useAuthStore().user = { id: 2, username: "reader", role: "viewer" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings).mockResolvedValue({ response: { blockListUrls: ["https://big.oisd.nl/"] } as never })
+
+      const wrapper = await mountConnected()
+
+      expect(wrapper.find("#edit-block-list-sources").exists()).toBe(false)
+    })
+
+    it("still shows the card for an admin even with no feeds configured, so they can add the first one", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings).mockResolvedValue({ response: { blockListUrls: [] } as never })
+
+      const wrapper = await mountConnected()
+
+      expect(wrapper.find("#edit-block-list-sources").exists()).toBe(true)
+      expect(wrapper.text()).toContain("No block list feeds configured.")
+    })
+
+    it("lets an admin edit the raw list (comments and URLs, one per line) and saves it", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings)
+        .mockResolvedValueOnce({
+          response: { blockListUrls: ["# Hagezi PRO++", "https://raw.githubusercontent.com/hagezi/pro.plus.txt"] } as never,
+        })
+        .mockResolvedValueOnce({
+          response: {
+            blockListUrls: [
+              "# Hagezi PRO++",
+              "https://raw.githubusercontent.com/hagezi/pro.plus.txt",
+              "https://big.oisd.nl/",
+            ],
+          } as never,
+        })
+      vi.mocked(updateBlockListUrls).mockResolvedValue({ status: "ok" })
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#edit-block-list-sources").trigger("click")
+
+      const textarea = wrapper.get("#block-list-sources-editor")
+      expect((textarea.element as HTMLTextAreaElement).value).toBe(
+        "# Hagezi PRO++\nhttps://raw.githubusercontent.com/hagezi/pro.plus.txt",
+      )
+
+      await textarea.setValue(
+        "# Hagezi PRO++\nhttps://raw.githubusercontent.com/hagezi/pro.plus.txt\nhttps://big.oisd.nl/",
+      )
+      await wrapper.get("#save-block-list-sources").trigger("click")
+      await flushPromises()
+
+      expect(updateBlockListUrls).toHaveBeenCalledWith([
+        "# Hagezi PRO++",
+        "https://raw.githubusercontent.com/hagezi/pro.plus.txt",
+        "https://big.oisd.nl/",
+      ])
+      expect(wrapper.find("#block-list-sources-editor").exists()).toBe(false)
+      expect(wrapper.text()).toContain("https://big.oisd.nl/")
+    })
+
+    it("drops blank lines when saving, but keeps comment lines", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings).mockResolvedValue({ response: { blockListUrls: [] } as never })
+      vi.mocked(updateBlockListUrls).mockResolvedValue({ status: "ok" })
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#edit-block-list-sources").trigger("click")
+      await wrapper.get("#block-list-sources-editor").setValue("https://big.oisd.nl/\n\n  \n# Label")
+      await wrapper.get("#save-block-list-sources").trigger("click")
+      await flushPromises()
+
+      expect(updateBlockListUrls).toHaveBeenCalledWith(["https://big.oisd.nl/", "# Label"])
+    })
+
+    it("shows a readable error, not a raw stack trace, when saving fails, and keeps the editor open", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings).mockResolvedValue({ response: { blockListUrls: ["https://big.oisd.nl/"] } as never })
+      vi.mocked(updateBlockListUrls).mockRejectedValue(new AppApiError("Permission denied.", 502))
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#edit-block-list-sources").trigger("click")
+      await wrapper.get("#save-block-list-sources").trigger("click")
+      await flushPromises()
+
+      expect(wrapper.find("#block-list-sources-save-error").text()).toBe("Permission denied.")
+      expect(wrapper.find("#block-list-sources-editor").exists()).toBe(true)
+    })
+
+    it("cancels out of the editor without saving", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(getSettings).mockResolvedValue({ response: { blockListUrls: ["https://big.oisd.nl/"] } as never })
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#edit-block-list-sources").trigger("click")
+      await wrapper.get("#block-list-sources-editor").setValue("something else entirely")
+      await wrapper.find("button").exists() // sanity: buttons rendered
+      const cancelBtn = wrapper.findAll("button").find((b) => b.text() === "Cancel")!
+      await cancelBtn.trigger("click")
+
+      expect(updateBlockListUrls).not.toHaveBeenCalled()
+      expect(wrapper.find("#block-list-sources-editor").exists()).toBe(false)
+      expect(wrapper.text()).toContain("https://big.oisd.nl/")
     })
   })
 })
