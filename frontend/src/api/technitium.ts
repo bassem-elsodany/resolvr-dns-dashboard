@@ -1,6 +1,12 @@
 // Typed client for the Technitium DNS Server API, called through the
 // backend proxy (backend/src/app.ts) — never directly, since Technitium
 // sends no CORS headers. See tasks/plan.md for why the proxy exists.
+//
+// Every path below comes from ENDPOINTS (./endpoints.ts) by key — never
+// a literal string — so an API path only ever needs to change in one
+// place.
+
+import { ENDPOINTS } from "./endpoints"
 
 export interface TechnitiumCredentials {
   baseUrl: string
@@ -70,7 +76,7 @@ export interface UserSessionInfo {
 }
 
 export function getUserSession(credentials: TechnitiumCredentials): Promise<UserSessionInfo> {
-  return technitiumGet("/user/session/get", {}, credentials)
+  return technitiumGet(ENDPOINTS.userSession, {}, credentials)
 }
 
 export interface CheckForUpdateResult {
@@ -82,7 +88,7 @@ export interface CheckForUpdateResult {
 }
 
 export function checkForUpdate(credentials: TechnitiumCredentials): Promise<CheckForUpdateResult> {
-  return technitiumGet("/user/checkForUpdate", {}, credentials)
+  return technitiumGet(ENDPOINTS.checkForUpdate, {}, credentials)
 }
 
 // ---------- Dashboard ----------
@@ -135,7 +141,7 @@ export function getDashboardStats(
   credentials: TechnitiumCredentials,
   opts: { utc?: boolean; start?: string; end?: string } = {},
 ): Promise<DashboardStatsResult> {
-  return technitiumGet("/dashboard/stats/get", { type, ...opts }, credentials)
+  return technitiumGet(ENDPOINTS.dashboardStats, { type, ...opts }, credentials)
 }
 
 export type TopStatsType = "TopClients" | "TopDomains" | "TopBlockedDomains"
@@ -165,7 +171,7 @@ export function getTopStats(
   credentials: TechnitiumCredentials,
   opts: { limit?: number; noReverseLookup?: boolean; onlyRateLimitedClients?: boolean } = {},
 ): Promise<TopStatsResult> {
-  return technitiumGet("/dashboard/stats/getTop", { statsType, type, ...opts }, credentials)
+  return technitiumGet(ENDPOINTS.dashboardTopStats, { statsType, type, ...opts }, credentials)
 }
 
 // ---------- Zones ----------
@@ -196,7 +202,7 @@ export function listZones(
   credentials: TechnitiumCredentials,
   opts: { pageNumber?: number; zonesPerPage?: number; filterName?: string; filterType?: string } = {},
 ): Promise<ZonesListResult> {
-  return technitiumGet("/zones/list", opts, credentials)
+  return technitiumGet(ENDPOINTS.zonesList, opts, credentials)
 }
 
 export interface ZoneRecord {
@@ -218,7 +224,7 @@ export function getZoneRecords(
   domain: string,
   credentials: TechnitiumCredentials,
 ): Promise<ZoneRecordsResult> {
-  return technitiumGet("/zones/records/get", { domain, listZone: true }, credentials)
+  return technitiumGet(ENDPOINTS.zoneRecords, { domain, listZone: true }, credentials)
 }
 
 // ---------- Cache ----------
@@ -228,7 +234,7 @@ export interface CacheListResult {
 }
 
 export function listCache(domain: string, credentials: TechnitiumCredentials): Promise<CacheListResult> {
-  return technitiumGet("/cache/list", { domain }, credentials)
+  return technitiumGet(ENDPOINTS.cacheList, { domain }, credentials)
 }
 
 // ---------- Allowed / Blocked zones ----------
@@ -241,22 +247,22 @@ export function listAllowedZones(
   credentials: TechnitiumCredentials,
   domain = "",
 ): Promise<DomainListResult> {
-  return technitiumGet("/allowed/list", { domain }, credentials)
+  return technitiumGet(ENDPOINTS.allowedList, { domain }, credentials)
 }
 
 export function exportAllowedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
-  return technitiumGetBlob("/allowed/export", {}, credentials)
+  return technitiumGetBlob(ENDPOINTS.allowedExport, {}, credentials)
 }
 
 export function listBlockedZones(
   credentials: TechnitiumCredentials,
   domain = "",
 ): Promise<DomainListResult> {
-  return technitiumGet("/blocked/list", { domain }, credentials)
+  return technitiumGet(ENDPOINTS.blockedList, { domain }, credentials)
 }
 
 export function exportBlockedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
-  return technitiumGetBlob("/blocked/export", {}, credentials)
+  return technitiumGetBlob(ENDPOINTS.blockedExport, {}, credentials)
 }
 
 // ---------- DHCP ----------
@@ -274,7 +280,7 @@ export interface DhcpScopesResult {
 }
 
 export function listDhcpScopes(credentials: TechnitiumCredentials): Promise<DhcpScopesResult> {
-  return technitiumGet("/dhcp/scopes/list", {}, credentials)
+  return technitiumGet(ENDPOINTS.dhcpScopesList, {}, credentials)
 }
 
 export interface DhcpLease {
@@ -291,7 +297,7 @@ export interface DhcpLeasesResult {
 }
 
 export function listDhcpLeases(credentials: TechnitiumCredentials): Promise<DhcpLeasesResult> {
-  return technitiumGet("/dhcp/leases/list", {}, credentials)
+  return technitiumGet(ENDPOINTS.dhcpLeasesList, {}, credentials)
 }
 
 // ---------- Query logs ----------
@@ -341,7 +347,7 @@ export function queryLogs(
   filters: QueryLogFilters = {},
 ): Promise<QueryLogsResult> {
   return technitiumGet(
-    "/logs/query",
+    ENDPOINTS.logsQuery,
     { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
     credentials,
   )
@@ -352,7 +358,7 @@ export function exportLogs(
   filters: QueryLogFilters = {},
 ): Promise<DownloadedFile> {
   return technitiumGetBlob(
-    "/logs/export",
+    ENDPOINTS.logsExport,
     { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
     credentials,
   )
@@ -373,7 +379,7 @@ export interface AppsListResult {
 }
 
 export function listApps(credentials: TechnitiumCredentials): Promise<AppsListResult> {
-  return technitiumGet("/apps/list", {}, credentials)
+  return technitiumGet(ENDPOINTS.appsList, {}, credentials)
 }
 
 // ---------- Settings ----------
@@ -401,7 +407,7 @@ export interface SettingsResult {
 }
 
 export function getSettings(credentials: TechnitiumCredentials): Promise<SettingsResult> {
-  return technitiumGet("/settings/get", {}, credentials)
+  return technitiumGet(ENDPOINTS.settingsGet, {}, credentials)
 }
 
 // ---------- DNS Client (resolver tool) ----------
@@ -435,7 +441,7 @@ export function resolveDnsQuery(
   opts: { server?: string; protocol?: string; dnssec?: boolean } = {},
 ): Promise<ResolveResult> {
   return technitiumGet(
-    "/dnsClient/resolve",
+    ENDPOINTS.dnsClientResolve,
     { domain, type, server: opts.server ?? "recursive-resolver", protocol: opts.protocol, dnssec: opts.dnssec },
     credentials,
   )
@@ -459,7 +465,7 @@ export interface AdminSessionsResult {
 }
 
 export function listAdminSessions(credentials: TechnitiumCredentials): Promise<AdminSessionsResult> {
-  return technitiumGet("/admin/sessions/list", {}, credentials)
+  return technitiumGet(ENDPOINTS.adminSessionsList, {}, credentials)
 }
 
 // ---------- helpers ----------
