@@ -2,11 +2,14 @@
 import { ref, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import { listCache, TechnitiumApiError, type ZoneRecord } from "../../api/technitium"
+import { flushCache, AppApiError } from "../../api/app"
 import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const auth = useAuthStore()
 
 const domainInput = ref("")
 const searchedDomain = ref<string | null>(null)
@@ -14,6 +17,36 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const records = ref<ZoneRecord[]>([])
 const zones = ref<string[]>([])
+
+const flushing = ref(false)
+const flushError = ref<string | null>(null)
+const flushedJustNow = ref(false)
+const confirmingFlush = ref(false)
+
+function startFlushConfirm(): void {
+  confirmingFlush.value = true
+  flushError.value = null
+  flushedJustNow.value = false
+}
+
+function cancelFlushConfirm(): void {
+  confirmingFlush.value = false
+}
+
+async function confirmFlushCache(): Promise<void> {
+  flushing.value = true
+  flushError.value = null
+  try {
+    await flushCache()
+    flushedJustNow.value = true
+    confirmingFlush.value = false
+    if (searchedDomain.value) void browse() // reflect the now-empty cache immediately
+  } catch (err) {
+    flushError.value = err instanceof AppApiError ? err.message : "Could not flush the cache."
+  } finally {
+    flushing.value = false
+  }
+}
 
 async function browse(): Promise<void> {
   const domain = domainInput.value.trim()
@@ -49,9 +82,38 @@ watch(
 
 <template>
   <div>
-    <div class="mb-4">
-      <h1 class="text-lg font-semibold tracking-tight text-fg">DNS Cache</h1>
-      <p class="mt-1 text-sm text-gray-500">Browse records the resolver currently holds in memory</p>
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold tracking-tight text-fg">DNS Cache</h1>
+        <p class="mt-1 text-sm text-gray-500">Browse records the resolver currently holds in memory</p>
+      </div>
+      <div v-if="auth.isAdmin && connection.isConfigured" class="flex flex-col items-end gap-1">
+        <div v-if="confirmingFlush" class="flex items-center gap-1.5">
+          <span class="text-[11.5px] text-crit">Clear the entire cache?</span>
+          <button
+            id="confirm-flush-cache"
+            type="button"
+            :disabled="flushing"
+            class="text-[11.5px] font-semibold text-crit disabled:opacity-50"
+            @click="confirmFlushCache"
+          >
+            {{ flushing ? "Flushing…" : "Confirm" }}
+          </button>
+          <button type="button" class="text-[11.5px] text-gray-500" @click="cancelFlushConfirm">Cancel</button>
+        </div>
+        <button
+          v-else
+          id="flush-cache"
+          type="button"
+          title="Clear all cached records — the resolver will make recursive queries again to repopulate it"
+          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-[11.5px] font-semibold text-gray-500 hover:text-crit"
+          @click="startFlushConfirm"
+        >
+          Flush cache
+        </button>
+        <span v-if="flushedJustNow" class="text-[11px] text-ok">Cache flushed.</span>
+        <span v-if="flushError" id="flush-cache-error" class="text-[11px] text-crit">{{ flushError }}</span>
+      </div>
     </div>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">

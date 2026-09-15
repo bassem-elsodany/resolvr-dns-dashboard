@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import {
   getDashboardStats,
   getTopStats,
@@ -11,11 +12,13 @@ import {
   type DashboardStatsResult,
   type TopClientEntry,
 } from "../../api/technitium"
+import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import StatTiles from "../../components/overview/StatTiles.vue"
 import QueriesChart from "../../components/overview/QueriesChart.vue"
 import TopList from "../../components/overview/TopList.vue"
 
 const connection = useConnectionStore()
+const auth = useAuthStore()
 // Time range is a single global control in the topbar (AppShell.vue),
 // not a per-page copy — the wireframe puts it there once and Overview
 // and Clients both read the same selection.
@@ -75,6 +78,23 @@ async function load(): Promise<void> {
   }
 }
 
+const updatingBlockLists = ref(false)
+const blockListUpdateError = ref<string | null>(null)
+const blockListUpdateTriggered = ref(false)
+
+async function onForceUpdateBlockLists(): Promise<void> {
+  updatingBlockLists.value = true
+  blockListUpdateError.value = null
+  try {
+    await forceUpdateBlockLists()
+    blockListUpdateTriggered.value = true
+  } catch (err) {
+    blockListUpdateError.value = err instanceof AppApiError ? err.message : "Could not trigger the block-list update."
+  } finally {
+    updatingBlockLists.value = false
+  }
+}
+
 onMounted(load)
 watch(() => timeRange.selected, load)
 watch(() => refresh.tick, load)
@@ -119,10 +139,26 @@ watch(
         </div>
         <div
           v-if="blockListFreshness"
-          class="flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-[12.5px]"
+          class="flex flex-wrap items-center gap-2 rounded-lg border px-3.5 py-2.5 text-[12.5px]"
           :class="blockListFreshness.overdue ? 'border-crit/35 bg-crit/10' : 'border-warn/35 bg-warn/10'"
         >
-          {{ blockListFreshness.message }}
+          <span>{{ blockListFreshness.message }}</span>
+          <template v-if="auth.isAdmin">
+            <button
+              v-if="!blockListUpdateTriggered"
+              id="force-update-block-lists"
+              type="button"
+              :disabled="updatingBlockLists"
+              class="ml-auto rounded-md border border-current/30 px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50"
+              @click="onForceUpdateBlockLists"
+            >
+              {{ updatingBlockLists ? "Updating…" : "Update now" }}
+            </button>
+            <span v-else class="ml-auto text-[11.5px] font-semibold">Update triggered &mdash; check back shortly.</span>
+          </template>
+          <span v-if="blockListUpdateError" id="force-update-block-lists-error" class="w-full text-[11.5px]">{{
+            blockListUpdateError
+          }}</span>
         </div>
       </div>
 

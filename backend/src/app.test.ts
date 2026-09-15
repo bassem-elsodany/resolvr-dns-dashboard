@@ -127,10 +127,12 @@ describe("proxy forwarding", () => {
     const proxyRes = await viewerAgent.get("/api/technitium/dashboard/stats/get");
     const configRes = await viewerAgent.get("/api/config");
     const usersRes = await viewerAgent.get("/api/users");
+    const actionRes = await viewerAgent.post("/api/actions/flush-cache");
 
     expect(proxyRes.status).toBe(200);
     expect(configRes.status).toBe(403);
     expect(usersRes.status).toBe(403);
+    expect(actionRes.status).toBe(403);
   });
 });
 

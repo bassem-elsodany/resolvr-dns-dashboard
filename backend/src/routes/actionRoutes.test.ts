@@ -1,0 +1,95 @@
+import { describe, it, expect, vi } from "vitest";
+import express from "express";
+import request from "supertest";
+import { openDb } from "../db.js";
+import { actionRoutes } from "./actionRoutes.js";
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+function testApp(fetchImpl: typeof fetch, configured = true) {
+  const db = openDb({ path: ":memory:" });
+  if (configured) {
+    db.prepare("UPDATE app_config SET base_url = ?, token = ? WHERE id = 1").run(
+      "http://10.0.60.60:5380",
+      "secret-token",
+    );
+  }
+  const app = express();
+  app.use(express.json());
+  app.use("/api/actions", actionRoutes(db, { fetchImpl }));
+  return { app, db };
+}
+
+describe("actionRoutes", () => {
+  it("flushes the DNS cache by calling the exact Technitium endpoint, with the stored token", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/flush-cache");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+    const [calledUrl, calledInit] = fetchImpl.mock.calls[0]!;
+    expect(String(calledUrl)).toBe("http://10.0.60.60:5380/api/cache/flush");
+    expect(calledInit?.method).toBe("POST");
+    expect(new Headers(calledInit?.headers).get("Authorization")).toBe("Bearer secret-token");
+  });
+
+  it("forces a block-list update by calling the exact Technitium endpoint", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/update-block-lists");
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    expect(String(calledUrl)).toBe("http://10.0.60.60:5380/api/settings/forceUpdateBlockLists");
+  });
+
+  it("revokes a session by partialToken", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok", response: {} }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/revoke-session").send({ partialToken: "ddfaecb8e9325e77" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/admin/sessions/delete");
+    expect(url.searchParams.get("partialToken")).toBe("ddfaecb8e9325e77");
+  });
+
+  it("rejects revoke-session without a partialToken, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/revoke-session").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for any action when no server is configured yet, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl, false);
+
+    const res = await request(app).post("/api/actions/flush-cache");
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 with Technitium's error message when the action fails upstream", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ status: "error", errorMessage: "Permission denied." }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/flush-cache");
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe("Permission denied.");
+  });
+});
