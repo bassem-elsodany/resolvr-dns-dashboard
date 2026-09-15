@@ -37,22 +37,22 @@ CORS for the frontend's dev/prod origin. No database, no config file — fully s
 
 ---
 
-## Task 2: Frontend scaffold + design tokens
+## Task 2: Frontend scaffold + design tokens ✅
 
 **Description:** Vite + Vue 3 + TypeScript + Tailwind project with vue-router and Pinia installed,
 and the wireframe's color/type token system (light default, dark via `prefers-color-scheme` +
 `[data-theme]` stamp) ported into `src/assets/styles.css` as the single source of truth.
 
 **Acceptance criteria:**
-- [ ] `npm run dev` serves a blank shell with Inter + IBM Plex Mono loading correctly
-- [ ] Theme tokens from the wireframe (accent, ok/warn/crit/info/cache semantic colors, bg/border
+- [x] `npm run dev` serves a blank shell with Inter + IBM Plex Mono loading correctly
+- [x] Theme tokens from the wireframe (accent, ok/warn/crit/info/cache semantic colors, bg/border
       scale) exist as CSS variables, light + dark, toggle-able via `data-theme` on the root element
-- [ ] Tailwind config maps utility classes to these tokens (matching `mcp-governance/frontend`'s
+- [x] Tailwind config maps utility classes to these tokens (matching `mcp-governance/frontend`'s
       `rgb(var(--x) / <alpha-value>)` pattern)
 
 **Verification:**
-- [ ] Build succeeds: `npm run build` in `frontend/`
-- [ ] Manual check: toggling `data-theme` in devtools switches the whole blank shell's colors
+- [x] Build succeeds: `npm run build` in `frontend/`
+- [x] Manual check: toggling `data-theme` in devtools switches the whole blank shell's colors
 
 **Dependencies:** None
 
