@@ -341,18 +341,18 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 12: DHCP page
+## Task 12: DHCP page ✅
 
 **Description:** Scopes table + leases table (or empty state) from `/api/dhcp/scopes/list` and
 `/api/dhcp/leases/list`.
 
 **Acceptance criteria:**
-- [ ] Scopes table matches the live server (currently one "Default" scope, disabled)
-- [ ] Leases table shows the correct empty state when `leases` is `[]`
+- [x] Scopes table matches the live server (currently one "Default" scope, disabled)
+- [x] Leases table shows the correct empty state when `leases` is `[]`
 
 **Verification:**
-- [ ] Manual check against the live server
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server through the actual proxy — exact match
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
