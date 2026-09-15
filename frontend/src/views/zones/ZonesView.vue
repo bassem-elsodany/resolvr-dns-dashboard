@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
-import { listZones, getZoneRecords, TechnitiumApiError, type ZoneSummary, type ZoneRecord } from "../api/technitium"
-import { formatRecordValue } from "../lib/formatRecordValue"
+import { useConnectionStore } from "../../stores/connection"
+import { listZones, getZoneRecords, TechnitiumApiError, type ZoneSummary, type ZoneRecord } from "../../api/technitium"
+import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
+import { useConnectionStore } from "../../stores/connection"
 import {
   getDashboardStats,
   getTopStats,
@@ -9,10 +9,10 @@ import {
   type StatsDuration,
   type DashboardStatsResult,
   type TopClientEntry,
-} from "../api/technitium"
-import StatTiles from "../components/overview/StatTiles.vue"
-import QueriesChart from "../components/overview/QueriesChart.vue"
-import TopList from "../components/overview/TopList.vue"
+} from "../../api/technitium"
+import StatTiles from "../../components/overview/StatTiles.vue"
+import QueriesChart from "../../components/overview/QueriesChart.vue"
+import TopList from "../../components/overview/TopList.vue"
 
 const connection = useConnectionStore()
 

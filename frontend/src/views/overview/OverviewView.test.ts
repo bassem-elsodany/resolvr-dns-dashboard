@@ -3,13 +3,13 @@ import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 import { createRouter, createMemoryHistory } from "vue-router"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, getDashboardStats: vi.fn(), getTopStats: vi.fn(), getSettings: vi.fn() }
 })
 
-import { getDashboardStats, getTopStats, getSettings, TechnitiumApiError } from "../api/technitium"
-import { useConnectionStore } from "../stores/connection"
+import { getDashboardStats, getTopStats, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { useConnectionStore } from "../../stores/connection"
 import OverviewView from "./OverviewView.vue"
 
 const baseStats = {

@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, getTopStats: vi.fn(), queryLogs: vi.fn(), exportLogs: vi.fn(), listApps: vi.fn() }
 })
-vi.mock("../lib/download", () => ({ triggerDownload: vi.fn() }))
+vi.mock("../../lib/download", () => ({ triggerDownload: vi.fn() }))
 
-import { getTopStats, queryLogs, exportLogs, listApps, TechnitiumApiError, type QueryLogEntry } from "../api/technitium"
-import { triggerDownload } from "../lib/download"
-import { useConnectionStore } from "../stores/connection"
+import { getTopStats, queryLogs, exportLogs, listApps, TechnitiumApiError, type QueryLogEntry } from "../../api/technitium"
+import { triggerDownload } from "../../lib/download"
+import { useConnectionStore } from "../../stores/connection"
 import QueryLogsView from "./QueryLogsView.vue"
 
 function flushPromises() {

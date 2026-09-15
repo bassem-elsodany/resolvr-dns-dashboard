@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
-import { useConnectionStore } from "../stores/connection"
+import { useConnectionStore } from "../../stores/connection"
 
 const connection = useConnectionStore()
 const baseUrlInput = ref(connection.baseUrl)

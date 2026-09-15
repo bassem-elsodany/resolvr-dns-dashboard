@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, listAdminSessions: vi.fn() }
 })
 
-import { listAdminSessions, TechnitiumApiError } from "../api/technitium"
-import { useConnectionStore } from "../stores/connection"
+import { listAdminSessions, TechnitiumApiError } from "../../api/technitium"
+import { useConnectionStore } from "../../stores/connection"
 import SessionsView from "./SessionsView.vue"
 
 function flushPromises() {

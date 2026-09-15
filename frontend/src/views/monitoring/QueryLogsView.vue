@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, watch } from "vue"
-import { useConnectionStore } from "../stores/connection"
+import { useConnectionStore } from "../../stores/connection"
 import {
   getTopStats,
   queryLogs,
@@ -9,11 +9,11 @@ import {
   TechnitiumApiError,
   type QueryLogEntry,
   type TopClientEntry,
-} from "../api/technitium"
-import { durationToRange } from "../lib/dateRange"
-import { blockedByLabel } from "../lib/blockMechanism"
-import { triggerDownload } from "../lib/download"
-import HostInsightPanel from "../components/logs/HostInsightPanel.vue"
+} from "../../api/technitium"
+import { durationToRange } from "../../lib/dateRange"
+import { blockedByLabel } from "../../lib/blockMechanism"
+import { triggerDownload } from "../../lib/download"
+import HostInsightPanel from "../../components/logs/HostInsightPanel.vue"
 
 const connection = useConnectionStore()
 

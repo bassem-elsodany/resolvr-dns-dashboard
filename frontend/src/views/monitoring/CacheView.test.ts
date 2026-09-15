@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, listCache: vi.fn() }
 })
 
-import { listCache, TechnitiumApiError } from "../api/technitium"
-import { useConnectionStore } from "../stores/connection"
+import { listCache, TechnitiumApiError } from "../../api/technitium"
+import { useConnectionStore } from "../../stores/connection"
 import CacheView from "./CacheView.vue"
 
 function flushPromises() {

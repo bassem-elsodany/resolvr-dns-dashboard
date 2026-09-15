@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue"
-import { useConnectionStore } from "../stores/connection"
-import { resolveDnsQuery, TechnitiumApiError, type ResolveResult } from "../api/technitium"
-import { formatRecordValue } from "../lib/formatRecordValue"
+import { useConnectionStore } from "../../stores/connection"
+import { resolveDnsQuery, TechnitiumApiError, type ResolveResult } from "../../api/technitium"
+import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
 
