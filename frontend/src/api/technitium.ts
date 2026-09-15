@@ -109,8 +109,20 @@ export interface DashboardStatsResult {
     mainChartData: {
       labelFormat: string
       labels: string[]
-      datasets: { label: string; data: number[] }[]
+      datasets: {
+        label: string
+        data: number[]
+        borderColor?: string
+        backgroundColor?: string
+        fill?: boolean
+      }[]
     }
+    queryTypeChartData?: { labels: string[]; datasets: { data: number[] }[] }
+    queryResponseChartData?: { labels: string[]; datasets: { data: number[] }[] }
+    // Present directly on stats/get, not just on getTop — one call covers both.
+    topClients?: TopClientEntry[]
+    topDomains?: TopDomainEntry[]
+    topBlockedDomains?: TopDomainEntry[]
   }
 }
 
