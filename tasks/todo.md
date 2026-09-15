@@ -172,21 +172,24 @@ alerts, and the page itself are natural sub-components)
 
 ---
 
-## Task 6: Clients page
+## Task 6: Clients page ✅
 
 **Description:** One row per device: IP, hostname (from `getTop`'s reverse-lookup `domain` field),
 total queries, blocked count, allowed/blocked bar, rate-limited badge, last-seen.
 
 **Acceptance criteria:**
-- [ ] Client list seeded from `/api/dashboard/stats/getTop?statsType=TopClients`
-- [ ] Blocked count per client computed via the count-only `/api/logs/query` approach documented
-      in `plan.md` (no dedicated stats endpoint exists for this)
-- [ ] Rate-limited clients show the red badge, sourced from the `rateLimited` field
-- [ ] Filter-by-IP-or-hostname input narrows the table client-side
+- [x] Client list seeded from `/api/dashboard/stats/getTop?statsType=TopClients`
+- [x] Blocked count per client computed via the count-only `/api/logs/query` approach documented
+      in `plan.md` (no dedicated stats endpoint exists for this) — total also recomputed the same
+      way, over the same window, after a test caught total/blocked being compared across two
+      different windows
+- [x] Rate-limited clients show the red badge, sourced from the `rateLimited` field
+- [x] Filter-by-IP-or-hostname input narrows the table client-side
 
 **Verification:**
-- [ ] Manual check: blocked % for one real client matches manually filtering Query Logs by that IP
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: blocked % for one real client matches manually filtering Query Logs by that IP
+      — confirmed 5,429 total / 2,398 blocked for the same client over the same 24h window
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
