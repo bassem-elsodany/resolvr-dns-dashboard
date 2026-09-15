@@ -198,7 +198,10 @@ export function listZones(
 export interface ZoneRecord {
   name: string
   type: string
-  ttl: string
+  // zones/records/get returns a plain number of seconds; cache/list
+  // returns a pre-formatted string like "283 (4 mins 43 sec)" — the API
+  // is not consistent between the two endpoints.
+  ttl: string | number
   rData: Record<string, unknown>
   disabled?: boolean
 }
