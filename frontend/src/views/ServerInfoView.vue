@@ -121,5 +121,6 @@ watch(
         </div>
       </div>
     </template>
+    <p v-else-if="loading" class="text-sm text-gray-500">Loading…</p>
   </div>
 </template>

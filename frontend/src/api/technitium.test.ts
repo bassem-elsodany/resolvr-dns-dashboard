@@ -79,6 +79,14 @@ describe("technitium API client", () => {
     await expect(getUserSession(credentials)).rejects.toThrow("Invalid token or session expired.")
   })
 
+  it("throws a TechnitiumApiError for a non-'ok', non-'error' status like 'invalid-token' (confirmed live: HTTP 200 with this exact status for a bad token)", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ status: "invalid-token", errorMessage: "Invalid token or session expired." }),
+    )
+
+    await expect(getUserSession(credentials)).rejects.toThrow("Invalid token or session expired.")
+  })
+
   it("throws a TechnitiumApiError when the backend proxy is unreachable", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
 

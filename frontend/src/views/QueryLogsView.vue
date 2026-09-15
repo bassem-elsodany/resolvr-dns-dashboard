@@ -5,6 +5,7 @@ import {
   getTopStats,
   queryLogs,
   exportLogs,
+  listApps,
   TechnitiumApiError,
   type QueryLogEntry,
   type TopClientEntry,
@@ -32,6 +33,8 @@ const loadError = ref<string | null>(null)
 const entries = ref<QueryLogEntry[]>([])
 const totalEntries = ref(0)
 const totalPages = ref(1)
+const appChecked = ref(false)
+const appMissing = ref(false)
 
 const hostChips = ref<TopClientEntry[]>([])
 const hostInsight = ref<{
@@ -56,8 +59,24 @@ function activeFilters() {
   return f
 }
 
+async function checkAppInstalled(): Promise<boolean> {
+  if (appChecked.value) return !appMissing.value
+  try {
+    const res = await listApps(connection.credentials)
+    appMissing.value = !res.response.apps.some((app) => app.name === "Query Logs (Sqlite)")
+  } catch {
+    // If the check itself fails, don't block the page on it — the
+    // subsequent queryLogs() call will surface its own error.
+    appMissing.value = false
+  } finally {
+    appChecked.value = true
+  }
+  return !appMissing.value
+}
+
 async function loadTable(): Promise<void> {
   if (!connection.isConfigured) return
+  if (!(await checkAppInstalled())) return
   loading.value = true
   loadError.value = null
   try {
@@ -204,6 +223,12 @@ watch(
       <router-link to="/connect" class="font-medium text-accent">Connection Settings</router-link> page to see
       query logs.
     </p>
+
+    <div v-else-if="appMissing" id="query-logs-app-missing" class="rounded-lg border border-warn/35 bg-warn/10 px-4 py-3 text-sm">
+      The <span class="font-mono">Query Logs (Sqlite)</span> app isn't installed on this server, so no
+      query history is available. Install it from the Technitium web console's Apps section to enable
+      this page.
+    </div>
 
     <template v-else>
       <div v-if="hostChips.length > 0" class="mb-4 flex flex-wrap gap-2">

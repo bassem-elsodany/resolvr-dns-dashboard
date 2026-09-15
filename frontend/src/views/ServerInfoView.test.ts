@@ -77,4 +77,22 @@ describe("ServerInfoView", () => {
 
     expect(wrapper.find("#server-info-error").text()).toBe("Invalid token or session expired.")
   })
+
+  it("shows a loading state instead of a blank page while settings are in flight", async () => {
+    let resolveFetch: (value: Awaited<ReturnType<typeof getSettings>>) => void = () => {}
+    vi.mocked(getSettings).mockReturnValue(new Promise((resolve) => (resolveFetch = resolve)))
+
+    const wrapper = mount(ServerInfoView, { global: { stubs: { RouterLink: true } } })
+    const connection = useConnectionStore()
+    connection.setConfig("http://10.0.60.60:5380", "secret-token")
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain("Loading")
+    expect(wrapper.find("#server-info-error").exists()).toBe(false)
+
+    resolveFetch({ response: sampleSettings })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("dns.villa58.lan")
+  })
 })
