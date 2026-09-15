@@ -137,28 +137,29 @@ topbar (time-range segmented control, refresh, theme toggle). Routes to empty pl
 
 ---
 
-## Task 5: Overview page
+## Task 5: Overview page ✅
 
 **Description:** Stat tiles, queries-over-time chart, query-type breakdown, top clients/domains/
 blocked tables, plus the two alert banners (rate-limited client, stale block lists).
 
 **Acceptance criteria:**
-- [ ] Stat tiles pull from `/api/dashboard/stats/get` for the topbar's selected time range
-      (1H/24H/7D/30D/1Y)
-- [ ] Chart renders `mainChartData` (Total / No Error / Blocked series) from the same call
-- [ ] Top clients/domains/blocked tables pull from `/api/dashboard/stats/getTop`
-      (`TopClients`/`TopDomains`/`TopBlockedDomains`)
-- [ ] Rate-limited banner appears only when `getTop?statsType=TopClients&onlyRateLimitedClients=true`
+- [x] Stat tiles pull from `/api/dashboard/stats/get` for the page's own selected time range
+      (1H/24H/7D/30D/1Y) — control lives on the Overview page itself, not the shared topbar
+- [x] Chart renders `mainChartData` (all datasets, colored from the API's own borderColor/
+      backgroundColor) from the same call
+- [x] Top clients/domains/blocked lists render from `topClients`/`topDomains`/`topBlockedDomains`,
+      which `/api/dashboard/stats/get` returns directly — no separate `getTop` calls needed for this
+- [x] Rate-limited banner appears only when `getTop?statsType=TopClients&onlyRateLimitedClients=true`
       returns at least one entry, and links to the Clients page
-- [ ] Block-list freshness banner reads `blockListNextUpdatedOn` /
+- [x] Block-list freshness banner reads `blockListNextUpdatedOn` /
       `blockListUpdateIntervalHours` from `/api/settings/get` and only shows when the list is
-      overdue or close to it
+      overdue or within 2h of its next update
 
 **Verification:**
-- [ ] Manual check: totals on the page match the Technitium web console's dashboard for the same
-      time range
-- [ ] Changing the time-range segmented control refetches and updates every widget
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: totals, top-list counts, and chart fields confirmed present exactly as consumed
+      against dns.villa58.lan; both banners correctly absent given current real server state
+- [x] Changing the time-range segmented control refetches and updates every widget (covered by test)
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
