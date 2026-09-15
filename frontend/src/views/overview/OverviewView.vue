@@ -159,9 +159,9 @@ watch(
       </div>
 
       <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
-        <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" />
-        <TopList title="Top domains" :items="stats.topDomains ?? []" tone="ok" />
-        <TopList title="Top blocked" :items="stats.topBlockedDomains ?? []" tone="crit" />
+        <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" filter-key="client" />
+        <TopList title="Top domains" :items="stats.topDomains ?? []" tone="ok" filter-key="qname" />
+        <TopList title="Top blocked" :items="stats.topBlockedDomains ?? []" tone="crit" filter-key="qname" />
       </div>
     </template>
 

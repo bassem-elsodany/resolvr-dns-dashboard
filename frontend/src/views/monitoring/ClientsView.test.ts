@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
+import { createRouter, createMemoryHistory } from "vue-router"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
@@ -17,11 +18,24 @@ function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/clients", component: ClientsView },
+      { path: "/logs", component: { template: "<div />" } },
+      { path: "/connect", component: { template: "<div />" } },
+    ],
+  })
+}
+
 async function mountConnected() {
-  const wrapper = mount(ClientsView, { global: { stubs: { RouterLink: true } } })
+  const router = makeRouter()
+  await router.push("/clients")
+  const wrapper = mount(ClientsView, { global: { plugins: [router] } })
   const connection = useConnectionStore()
   connection.setConfig("http://10.0.60.60:5380", "secret-token")
-  return { wrapper, connection }
+  return { wrapper, connection, router }
 }
 
 describe("ClientsView", () => {
@@ -33,7 +47,9 @@ describe("ClientsView", () => {
   })
 
   it("prompts to connect when no server is configured", async () => {
-    const wrapper = mount(ClientsView, { global: { stubs: { RouterLink: true } } })
+    const router = makeRouter()
+    await router.push("/clients")
+    const wrapper = mount(ClientsView, { global: { plugins: [router] } })
     await flushPromises()
 
     expect(wrapper.text()).toContain("Connect to a Technitium server")
@@ -156,5 +172,23 @@ describe("ClientsView", () => {
     await flushPromises()
 
     expect(getTopStats).toHaveBeenCalledTimes(1)
+  })
+
+  it("links each client row to its filtered Query Logs, for easy drill-down", async () => {
+    vi.mocked(getTopStats).mockResolvedValue({
+      response: { topClients: [{ name: "10.0.10.30", domain: "unifi.villa58.lan", hits: 10, rateLimited: false }] },
+    })
+    vi.mocked(queryLogs).mockResolvedValue({ response: { pageNumber: 1, totalPages: 1, totalEntries: 0, entries: [] } })
+
+    const { wrapper, router } = await mountConnected()
+    await flushPromises()
+
+    const link = wrapper.get("tbody a")
+    expect(link.text()).toBe("10.0.10.30")
+    await link.trigger("click")
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe("/logs")
+    expect(router.currentRoute.value.query.client).toBe("10.0.10.30")
   })
 })

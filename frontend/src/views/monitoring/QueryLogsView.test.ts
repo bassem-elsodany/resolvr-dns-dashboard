@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
+import { createRouter, createMemoryHistory } from "vue-router"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
@@ -41,12 +42,21 @@ const sampleEntry = {
   answer: null,
 }
 
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: "/logs", component: QueryLogsView }],
+  })
+}
+
 async function mountConnected() {
-  const wrapper = mount(QueryLogsView, { global: { stubs: { RouterLink: true } } })
+  const router = makeRouter()
+  await router.push("/logs")
+  const wrapper = mount(QueryLogsView, { global: { plugins: [router] } })
   const connection = useConnectionStore()
   connection.setConfig("http://10.0.60.60:5380", "secret-token")
   await flushPromises()
-  return { wrapper, connection }
+  return { wrapper, connection, router }
 }
 
 describe("QueryLogsView", () => {
@@ -272,7 +282,86 @@ describe("QueryLogsView", () => {
     const { wrapper } = await mountConnected()
 
     expect(wrapper.find("#query-logs-app-missing").exists()).toBe(true)
-    expect(wrapper.text()).toContain("Query Logs (Sqlite)")
+    expect(wrapper.text()).toContain("Query Logs")
     expect(queryLogs).not.toHaveBeenCalled()
+  })
+
+  it("detects any of Technitium's Query Logs apps (Sqlite/MySQL/PostgreSQL/SQL Server), not just Sqlite", async () => {
+    vi.mocked(listApps).mockResolvedValue({
+      response: { apps: [{ name: "Query Logs (MySQL)", description: "", version: "9.1.1", updateAvailable: false }] },
+    })
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 5 }))
+
+    const { wrapper } = await mountConnected()
+
+    expect(wrapper.find("#query-logs-app-missing").exists()).toBe(false)
+    expect(wrapper.text()).toContain("sourced from the Query Logs (MySQL) app")
+    expect(queryLogs).toHaveBeenCalled()
+  })
+
+  it("pre-filters by client when navigated to with a ?client= query param (from Overview's Top clients)", async () => {
+    const router = makeRouter()
+    await router.push("/logs?client=10.0.10.30")
+    const wrapper = mount(QueryLogsView, { global: { plugins: [router] } })
+    useConnectionStore().setConfig("http://10.0.60.60:5380", "secret-token")
+    await flushPromises()
+
+    const clientFilterValue = (wrapper.get("#filter-client").element as HTMLInputElement).value
+    expect(clientFilterValue).toBe("10.0.10.30")
+  })
+
+  it("pre-filters by domain when navigated to with a ?qname= query param (from Overview's Top domains/blocked)", async () => {
+    const router = makeRouter()
+    await router.push("/logs?qname=sessions.bugsnag.com")
+    mount(QueryLogsView, { global: { plugins: [router] } })
+    useConnectionStore().setConfig("http://10.0.60.60:5380", "secret-token")
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ qname: "sessions.bugsnag.com" }),
+    )
+  })
+
+  it("shows the host-insight graphs when a client IP is typed directly into the filter, not only via a host chip", async () => {
+    vi.mocked(queryLogs)
+      .mockResolvedValueOnce(logsResult()) // initial table load
+      .mockResolvedValueOnce(logsResult({ totalEntries: 300 })) // insight: total
+      .mockResolvedValueOnce(logsResult({ totalEntries: 40 })) // insight: Blocked
+      .mockResolvedValueOnce(logsResult({ totalEntries: 3 })) // insight: CacheBlocked
+      .mockResolvedValueOnce(logsResult({ totalEntries: 1 })) // insight: UpstreamBlocked
+      .mockResolvedValueOnce(logsResult({ totalEntries: 300 })) // table after filter change
+
+    const { wrapper } = await mountConnected()
+    expect(wrapper.find("#host-insight").exists()).toBe(false)
+
+    await wrapper.get("#filter-client").setValue("10.0.10.99")
+    await wrapper.get("#filter-client").trigger("change")
+    await flushPromises()
+
+    expect(wrapper.find("#host-insight").exists()).toBe(true)
+  })
+
+  it("clicking a Client cell in the table filters the table by that client, in place", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 1, entries: [sampleEntry] }))
+    const { wrapper } = await mountConnected()
+    vi.mocked(queryLogs).mockClear()
+
+    await wrapper.get("tbody button[title='Filter Query Logs by this client']").trigger("click")
+    await flushPromises()
+
+    const clientFilterValue = (wrapper.get("#filter-client").element as HTMLInputElement).value
+    expect(clientFilterValue).toBe(sampleEntry.clientIpAddress)
+  })
+
+  it("clicking a Query cell in the table filters the table by that domain, in place", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 1, entries: [sampleEntry] }))
+    const { wrapper } = await mountConnected()
+    vi.mocked(queryLogs).mockClear()
+
+    await wrapper.get("tbody button[title='Filter Query Logs by this domain']").trigger("click")
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ qname: sampleEntry.qname }))
   })
 })

@@ -8,6 +8,7 @@ import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
 import type { StatsDuration } from "../../api/technitium"
 import { navSections } from "./navSections"
+import NavIcon from "./NavIcon.vue"
 
 const connection = useConnectionStore()
 const theme = useThemeStore()
@@ -68,6 +69,15 @@ function navBadge(to: string): number | null {
       return null
   }
 }
+
+// Clients' badge is an alert (rate-limited devices) so it reads in
+// crit red, matching the wireframe; Server Info's is a warn-colored
+// update notice; everything else is a neutral count.
+function navBadgeClass(to: string): string {
+  if (to === "/clients") return "text-crit"
+  if (to === "/server") return "text-warn"
+  return "text-gray-500"
+}
 </script>
 
 <template>
@@ -116,12 +126,13 @@ function navBadge(to: string): number | null {
           exact-active-class="!bg-background-hover !text-fg"
           @click="mobileOpen = false"
         >
+          <NavIcon :name="item.icon" />
           {{ item.label }}
           <span
             v-if="navBadge(item.to) !== null"
             :id="item.to === '/server' ? 'server-update-badge' : undefined"
             class="ml-auto text-[10.5px] font-bold tabular-nums"
-            :class="item.to === '/server' ? 'text-warn' : 'text-gray-500'"
+            :class="navBadgeClass(item.to)"
             :title="item.to === '/server' ? (serverUpdate.updateTitle ?? 'Update available') : undefined"
           >
             {{ navBadge(item.to) }}
@@ -147,10 +158,11 @@ function navBadge(to: string): number | null {
         </div>
         <router-link
           to="/connect"
-          class="nav-link flex min-h-[33px] items-center rounded-lg px-2.5 text-[13px] font-medium text-gray-400 hover:bg-background-hover hover:text-fg"
+          class="nav-link flex min-h-[33px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-gray-400 hover:bg-background-hover hover:text-fg"
           active-class="!bg-background-hover !text-fg"
           @click="mobileOpen = false"
         >
+          <NavIcon name="connect" />
           Connection Settings
         </router-link>
       </div>

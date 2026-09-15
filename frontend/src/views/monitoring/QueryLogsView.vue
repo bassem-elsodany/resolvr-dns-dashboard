@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue"
+import { ref, reactive, computed, onMounted, watch } from "vue"
+import { useRoute } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import {
@@ -15,10 +16,15 @@ import { durationToRange } from "../../lib/dateRange"
 import { blockedByLabel } from "../../lib/blockMechanism"
 import { triggerDownload } from "../../lib/download"
 import { formatRtt } from "../../lib/formatRtt"
+import { responseTypeTone, rcodeTone, blockedByTone } from "../../lib/badgeTones"
+import { useLivePolling } from "../../composables/useLivePolling"
 import HostInsightPanel from "../../components/logs/HostInsightPanel.vue"
+import Badge from "../../components/ui/Badge.vue"
+import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const route = useRoute()
 
 const ENTRIES_PER_PAGE = 20
 
@@ -38,6 +44,11 @@ const totalEntries = ref(0)
 const totalPages = ref(1)
 const appChecked = ref(false)
 const appMissing = ref(false)
+// Technitium ships four official query-logging apps backed by different
+// databases (Sqlite/MySQL/PostgreSQL/SQL Server) — the /api/logs/query
+// endpoint works the same regardless of which one is installed, so we
+// detect whichever is present instead of hardcoding the Sqlite variant.
+const installedLogAppName = ref<string | null>(null)
 
 const hostChips = ref<TopClientEntry[]>([])
 const hostInsight = ref<{
@@ -49,8 +60,7 @@ const hostInsight = ref<{
   upstreamBlocked: number
 } | null>(null)
 
-const liveOn = ref(false)
-let liveTimer: ReturnType<typeof setInterval> | null = null
+const { liveOn, toggle: toggleLive } = useLivePolling(() => loadTable())
 
 // Matches the wireframe's "Showing 1–10 of N" footer wording.
 const rangeStart = computed(() => (totalEntries.value === 0 ? 0 : (pageNumber.value - 1) * ENTRIES_PER_PAGE + 1))
@@ -70,7 +80,9 @@ async function checkAppInstalled(): Promise<boolean> {
   if (appChecked.value) return !appMissing.value
   try {
     const res = await listApps(connection.credentials)
-    appMissing.value = !res.response.apps.some((app) => app.name === "Query Logs (Sqlite)")
+    const logApp = res.response.apps.find((app) => app.name.startsWith("Query Logs ("))
+    installedLogAppName.value = logApp?.name ?? null
+    appMissing.value = !logApp
   } catch {
     // If the check itself fails, don't block the page on it — the
     // subsequent queryLogs() call will surface its own error.
@@ -162,8 +174,56 @@ function clearHost(): void {
   void loadTable()
 }
 
+// Lets any query name — a table row's Query cell, or a domain clicked
+// from Overview's Top domains/Top blocked — become the qname filter in
+// one click, without the user re-typing it.
+function filterByQname(qname: string): void {
+  filters.qname = qname
+  pageNumber.value = 1
+  void loadTable()
+}
+
+// Selecting a client this way (table row click, or arriving via
+// /logs?client=...) works even for a client outside the top-6 chip
+// list — it's the general case selectHost's callers (the chips) are
+// just one instance of.
+function filterByClient(ip: string): void {
+  selectHost({ name: ip, hits: 0, rateLimited: false })
+}
+
+// Reads ?client=<ip> or ?qname=<domain> — set by TopList's links on
+// Overview and by ClientsView's client links — so arriving here from
+// elsewhere in the app lands pre-filtered instead of dumping the user
+// on an unfiltered 10,000-row table they have to re-filter by hand.
+function applyRouteQuery(): void {
+  if (!connection.isConfigured) return
+  const qClient = route.query.client
+  const qQname = route.query.qname
+  if (typeof qClient === "string" && qClient) {
+    filterByClient(qClient)
+  } else if (typeof qQname === "string" && qQname) {
+    filterByQname(qQname)
+  } else {
+    void loadTable()
+  }
+}
+
 function onFilterChange(): void {
   pageNumber.value = 1
+  void loadTable()
+}
+
+// Typing an IP straight into the Client IP field is the same intent as
+// clicking a host chip — the Allowed/blocked breakdown should appear
+// either way, not only when the user happens to click a suggested chip.
+function onClientFilterChange(): void {
+  pageNumber.value = 1
+  if (filters.clientIpAddress) {
+    const chip = hostChips.value.find((c) => c.name === filters.clientIpAddress)
+    loadHostInsight(chip ?? { name: filters.clientIpAddress, hits: 0, rateLimited: false }).catch(() => {})
+  } else {
+    hostInsight.value = null
+  }
   void loadTable()
 }
 
@@ -172,16 +232,6 @@ function goToPage(delta: number): void {
   if (next < 1 || next > totalPages.value) return
   pageNumber.value = next
   void loadTable()
-}
-
-function toggleLive(): void {
-  liveOn.value = !liveOn.value
-  if (liveOn.value) {
-    liveTimer = setInterval(loadTable, 5000)
-  } else if (liveTimer) {
-    clearInterval(liveTimer)
-    liveTimer = null
-  }
 }
 
 async function onExport(): Promise<void> {
@@ -194,21 +244,23 @@ async function onExport(): Promise<void> {
 }
 
 onMounted(() => {
-  loadTable()
+  applyRouteQuery()
   loadHostChips()
-})
-onUnmounted(() => {
-  if (liveTimer) clearInterval(liveTimer)
 })
 watch(
   () => connection.isConfigured,
   (configured) => {
     if (configured) {
-      loadTable()
+      applyRouteQuery()
       loadHostChips()
     }
   },
 )
+// The route component instance is reused across /logs navigations with
+// different query strings (Vue Router doesn't remount for a query-only
+// change), so onMounted alone would miss a second click-through from
+// Overview while already on this page — this watcher covers that.
+watch(() => route.query, applyRouteQuery)
 watch(() => refresh.tick, loadTable)
 </script>
 
@@ -218,24 +270,13 @@ watch(() => refresh.tick, loadTable)
       <div>
         <h1 class="text-lg font-semibold tracking-tight text-fg">Query Logs</h1>
         <p class="mt-1 text-sm text-gray-500">
-          Every request answered by the resolver &middot; sourced from the Query Logs (Sqlite) app<span
-            v-if="totalEntries > 0"
-          >
-            &middot; {{ totalEntries.toLocaleString() }} entries</span
-          >
+          Every request answered by the resolver<span v-if="installedLogAppName">
+            &middot; sourced from the {{ installedLogAppName }} app</span
+          ><span v-if="totalEntries > 0"> &middot; {{ totalEntries.toLocaleString() }} entries</span>
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <button
-          id="live-toggle"
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border border-border bg-background-card px-2.5 py-1.5 text-[11.5px] font-semibold"
-          :class="liveOn ? 'text-ok' : 'text-gray-500'"
-          @click="toggleLive"
-        >
-          <span class="h-1.5 w-1.5 rounded-full" :class="liveOn ? 'bg-ok' : 'bg-gray-500'" />
-          Live
-        </button>
+        <LiveToggle id="live-toggle" :model-value="liveOn" @update:model-value="toggleLive" />
         <button
           id="export-csv"
           type="button"
@@ -254,9 +295,9 @@ watch(() => refresh.tick, loadTable)
     </p>
 
     <div v-else-if="appMissing" id="query-logs-app-missing" class="rounded-lg border border-warn/35 bg-warn/10 px-4 py-3 text-sm">
-      The <span class="font-mono">Query Logs (Sqlite)</span> app isn't installed on this server, so no
-      query history is available. Install it from the Technitium web console's Apps section to enable
-      this page.
+      No <span class="font-mono">Query Logs</span> app is installed on this server, so no query history is
+      available. Install one from the Technitium web console's Apps section — Sqlite, MySQL, PostgreSQL and
+      SQL Server variants are all supported here.
     </div>
 
     <template v-else>
@@ -276,7 +317,8 @@ watch(() => refresh.tick, loadTable)
               "
               @click="selectHost(chip)"
             >
-              <span class="font-mono">{{ chip.name }}</span>
+              <span class="font-mono font-semibold">{{ chip.name }}</span>
+              <span v-if="chip.domain" class="ml-1.5 text-gray-500">{{ chip.domain.split(".")[0] }}</span>
             </button>
             <button
               v-if="filters.clientIpAddress"
@@ -290,59 +332,74 @@ watch(() => refresh.tick, loadTable)
         </div>
 
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-          <input
-            id="filter-client"
-            v-model="filters.clientIpAddress"
-            placeholder="Client IP"
-            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs font-mono"
-            @change="onFilterChange"
-          />
-          <input
-            id="filter-qname"
-            v-model="filters.qname"
-            placeholder="Query name"
-            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-            @change="onFilterChange"
-          />
-          <select
-            id="filter-response-type"
-            v-model="filters.responseType"
-            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-            @change="onFilterChange"
-          >
-            <option value="">All responses</option>
-            <option value="Recursive">Recursive</option>
-            <option value="Cached">Cached</option>
-            <option value="Authoritative">Authoritative</option>
-            <option value="Blocked">Blocked</option>
-            <option value="CacheBlocked">Cache Block</option>
-            <option value="UpstreamBlocked">Upstream Block</option>
-          </select>
-          <select
-            id="filter-protocol"
-            v-model="filters.protocol"
-            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-            @change="onFilterChange"
-          >
-            <option value="">All protocols</option>
-            <option value="Udp">UDP</option>
-            <option value="Tcp">TCP</option>
-            <option value="Tls">DoT</option>
-            <option value="Https">DoH</option>
-            <option value="Quic">DoQ</option>
-          </select>
-          <select
-            id="filter-rcode"
-            v-model="filters.rcode"
-            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-            @change="onFilterChange"
-          >
-            <option value="">All RCODEs</option>
-            <option value="NoError">NoError</option>
-            <option value="NxDomain">NxDomain</option>
-            <option value="ServerFailure">ServerFailure</option>
-            <option value="Refused">Refused</option>
-          </select>
+          <div class="flex flex-col gap-1">
+            <label for="filter-client" class="text-[11px] font-semibold text-gray-500">Client IP</label>
+            <input
+              id="filter-client"
+              v-model="filters.clientIpAddress"
+              placeholder="10.0.10.30"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs font-mono"
+              @change="onClientFilterChange"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="filter-qname" class="text-[11px] font-semibold text-gray-500">Query name</label>
+            <input
+              id="filter-qname"
+              v-model="filters.qname"
+              placeholder="example.com"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+              @change="onFilterChange"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="filter-response-type" class="text-[11px] font-semibold text-gray-500">Response type</label>
+            <select
+              id="filter-response-type"
+              v-model="filters.responseType"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+              @change="onFilterChange"
+            >
+              <option value="">All</option>
+              <option value="Recursive">Recursive</option>
+              <option value="Cached">Cached</option>
+              <option value="Authoritative">Authoritative</option>
+              <option value="Blocked">Blocked</option>
+              <option value="CacheBlocked">Cache Block</option>
+              <option value="UpstreamBlocked">Upstream Block</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="filter-protocol" class="text-[11px] font-semibold text-gray-500">Protocol</label>
+            <select
+              id="filter-protocol"
+              v-model="filters.protocol"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+              @change="onFilterChange"
+            >
+              <option value="">All</option>
+              <option value="Udp">UDP</option>
+              <option value="Tcp">TCP</option>
+              <option value="Tls">DoT</option>
+              <option value="Https">DoH</option>
+              <option value="Quic">DoQ</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="filter-rcode" class="text-[11px] font-semibold text-gray-500">RCODE</label>
+            <select
+              id="filter-rcode"
+              v-model="filters.rcode"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+              @change="onFilterChange"
+            >
+              <option value="">All</option>
+              <option value="NoError">NoError</option>
+              <option value="NxDomain">NxDomain</option>
+              <option value="ServerFailure">ServerFailure</option>
+              <option value="Refused">Refused</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -382,12 +439,39 @@ watch(() => refresh.tick, loadTable)
             </tr>
             <tr v-for="row in entries" :key="row.rowNumber" class="border-b border-border last:border-b-0">
               <td class="whitespace-nowrap px-2.5 py-1.5 text-gray-500">{{ new Date(row.timestamp).toLocaleTimeString() }}</td>
-              <td class="px-2.5 py-1.5 font-mono">{{ row.clientIpAddress }}</td>
+              <td class="px-2.5 py-1.5 font-mono">
+                <button
+                  type="button"
+                  title="Filter Query Logs by this client"
+                  class="hover:text-accent hover:underline"
+                  @click="filterByClient(row.clientIpAddress)"
+                >
+                  {{ row.clientIpAddress }}
+                </button>
+              </td>
               <td class="px-2.5 py-1.5">{{ row.protocol }}</td>
-              <td class="px-2.5 py-1.5">{{ row.responseType }}</td>
-              <td class="px-2.5 py-1.5">{{ blockedByLabel(row.responseType) ?? "–" }}</td>
-              <td class="px-2.5 py-1.5">{{ row.rcode }}</td>
-              <td class="max-w-[220px] truncate px-2.5 py-1.5 font-mono">{{ row.qname }}</td>
+              <td class="px-2.5 py-1.5">
+                <Badge :tone="responseTypeTone(row.responseType)">{{ row.responseType }}</Badge>
+              </td>
+              <td class="px-2.5 py-1.5">
+                <Badge v-if="blockedByLabel(row.responseType)" :tone="blockedByTone(row.responseType)">{{
+                  blockedByLabel(row.responseType)
+                }}</Badge>
+                <span v-else class="text-gray-500">–</span>
+              </td>
+              <td class="px-2.5 py-1.5">
+                <Badge :tone="rcodeTone(row.rcode)">{{ row.rcode }}</Badge>
+              </td>
+              <td class="max-w-[220px] truncate px-2.5 py-1.5 font-mono">
+                <button
+                  type="button"
+                  title="Filter Query Logs by this domain"
+                  class="hover:text-accent hover:underline"
+                  @click="filterByQname(row.qname)"
+                >
+                  {{ row.qname }}
+                </button>
+              </td>
               <td class="px-2.5 py-1.5 text-gray-500">{{ row.qtype }}</td>
               <td class="px-2.5 py-1.5 text-right tabular-nums text-gray-500">{{ formatRtt(row.responseRtt) }}</td>
               <td class="max-w-[200px] truncate px-2.5 py-1.5 font-mono text-gray-500">{{ row.answer ?? "–" }}</td>
