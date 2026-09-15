@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
+import { useQueryLogsAppStore } from "../../stores/queryLogsApp"
 import { getTopStats, queryLogs, TechnitiumApiError } from "../../api/technitium"
 import { durationToRange } from "../../lib/dateRange"
 
@@ -11,6 +12,7 @@ const connection = useConnectionStore()
 // OverviewView.vue for the same pattern.
 const timeRange = useTimeRangeStore()
 const refresh = useRefreshStore()
+const queryLogsApp = useQueryLogsAppStore()
 const filterText = ref("")
 
 interface ClientRow {
@@ -39,6 +41,12 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
+    await queryLogsApp.ensure(connection.credentials)
+    if (!queryLogsApp.app) {
+      loadError.value = "No Query Logs app is installed on this server, so client activity can't be loaded."
+      return
+    }
+    const app = queryLogsApp.app
     const top = await getTopStats("TopClients", timeRange.selected, connection.credentials, { limit: 15 })
     const entries = top.response.topClients ?? []
     const { start, end } = durationToRange(timeRange.selected)
@@ -46,14 +54,14 @@ async function load(): Promise<void> {
     clients.value = await Promise.all(
       entries.map(async (entry) => {
         const [totalRes, blockedRes] = await Promise.all([
-          queryLogs(connection.credentials, {
+          queryLogs(connection.credentials, app, {
             clientIpAddress: entry.name,
             start,
             end,
             entriesPerPage: 1,
             descendingOrder: true,
           }),
-          queryLogs(connection.credentials, {
+          queryLogs(connection.credentials, app, {
             clientIpAddress: entry.name,
             responseType: "Blocked",
             start,
