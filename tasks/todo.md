@@ -411,19 +411,20 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 15: Server Info page
+## Task 15: Server Info page ✅
 
 **Description:** Read-only settings snapshot from `/api/settings/get` (identity, resolution,
 rate-limiting, defaults) plus the update-available badge from `/api/user/checkForUpdate` shown in
 the sidebar nav item.
 
 **Acceptance criteria:**
-- [ ] All four panels show real values from the live server
-- [ ] Sidebar "Server Info" nav item shows the update badge only when a newer version is available
+- [x] All four panels show real values from the live server
+- [x] Sidebar "Server Info" nav item shows the update badge only when a newer version is available
 
 **Verification:**
-- [ ] Manual check against the live server's actual settings
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server's actual settings through the actual proxy — exact match;
+      checkForUpdate correctly reports no update, badge correctly hidden
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
