@@ -20,7 +20,7 @@ function flushPromises() {
 async function mountConnected() {
   const wrapper = mount(AllowedZonesView, { global: { stubs: { RouterLink: true } } })
   const connection = useConnectionStore()
-  connection.setConfig("http://10.0.60.60:5380", "secret-token")
+  connection.isConfigured = true
   await flushPromises()
   return wrapper
 }

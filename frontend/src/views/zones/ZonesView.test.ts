@@ -22,7 +22,7 @@ function zonesResult(zones: ZoneSummary[], overrides: Partial<{ totalPages: numb
 async function mountConnected() {
   const wrapper = mount(ZonesView, { global: { stubs: { RouterLink: true } } })
   const connection = useConnectionStore()
-  connection.setConfig("http://10.0.60.60:5380", "secret-token")
+  connection.isConfigured = true
   await flushPromises()
   return wrapper
 }

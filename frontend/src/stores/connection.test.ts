@@ -1,108 +1,96 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createPinia, setActivePinia } from "pinia"
 
-vi.mock("../api/technitium", async () => {
-  const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
-  return { ...actual, getUserSession: vi.fn() }
+vi.mock("../api/app", async () => {
+  const actual = await vi.importActual<typeof import("../api/app")>("../api/app")
+  return { ...actual, getStatus: vi.fn(), setServerConfig: vi.fn() }
 })
 
-import { getUserSession, TechnitiumApiError } from "../api/technitium"
+import { getStatus, setServerConfig, AppApiError } from "../api/app"
 import { useConnectionStore } from "./connection"
 
 describe("connection store", () => {
   beforeEach(() => {
-    localStorage.clear()
     setActivePinia(createPinia())
-    vi.mocked(getUserSession).mockReset()
+    vi.mocked(getStatus).mockReset()
+    vi.mocked(setServerConfig).mockReset()
   })
 
-  it("starts unconfigured with no stored config", () => {
+  it("starts unconfigured before the backend status has been checked", () => {
     const store = useConnectionStore()
 
     expect(store.isConfigured).toBe(false)
     expect(store.status).toBe("idle")
   })
 
-  it("persists the server URL and token to localStorage on setConfig", () => {
-    const store = useConnectionStore()
-
-    store.setConfig("http://10.0.60.60:5380", "secret-token")
-
-    expect(JSON.parse(localStorage.getItem("resolvr.connection")!)).toEqual({
-      baseUrl: "http://10.0.60.60:5380",
-      token: "secret-token",
-    })
-  })
-
-  it("trims trailing slashes and whitespace from the server URL", () => {
-    const store = useConnectionStore()
-
-    store.setConfig("  http://10.0.60.60:5380/  ", "  secret-token  ")
-
-    expect(store.baseUrl).toBe("http://10.0.60.60:5380")
-    expect(store.token).toBe("secret-token")
-  })
-
-  it("restores a previously saved config on store creation, surviving a reload", () => {
-    localStorage.setItem(
-      "resolvr.connection",
-      JSON.stringify({ baseUrl: "http://10.0.60.60:5380", token: "secret-token" }),
-    )
-
-    const store = useConnectionStore()
-
-    expect(store.baseUrl).toBe("http://10.0.60.60:5380")
-    expect(store.token).toBe("secret-token")
-    expect(store.isConfigured).toBe(true)
-  })
-
-  it("sets status to connected and records server info on a successful test", async () => {
-    vi.mocked(getUserSession).mockResolvedValue({
-      username: "admin",
-      info: { version: "15.4", dnsServerDomain: "dns.villa58.lan", uptimestamp: "", clusterInitialized: false },
+  it("reflects the backend's configured/connected status after testConnection()", async () => {
+    vi.mocked(getStatus).mockResolvedValue({
+      configured: true,
+      connected: true,
+      serverDomain: "dns.villa58.lan",
+      serverVersion: "15.4",
     })
     const store = useConnectionStore()
-    store.setConfig("http://10.0.60.60:5380", "secret-token")
 
     await store.testConnection()
 
+    expect(store.isConfigured).toBe(true)
     expect(store.status).toBe("connected")
     expect(store.serverDomain).toBe("dns.villa58.lan")
     expect(store.serverVersion).toBe("15.4")
     expect(store.error).toBeNull()
   })
 
-  it("sets status to error with a readable message on a failed test, not a raw stack trace", async () => {
-    vi.mocked(getUserSession).mockRejectedValue(
-      new TechnitiumApiError("Invalid token or session expired.", 200),
-    )
+  it("reports an error status when the backend has a config but can't reach Technitium", async () => {
+    vi.mocked(getStatus).mockResolvedValue({
+      configured: true,
+      connected: false,
+      serverDomain: null,
+      serverVersion: null,
+      error: "Could not reach Technitium server: connect ECONNREFUSED",
+    })
     const store = useConnectionStore()
-    store.setConfig("http://10.0.60.60:5380", "wrong-token")
 
     await store.testConnection()
+
+    expect(store.status).toBe("error")
+    expect(store.error).toBe("Could not reach Technitium server: connect ECONNREFUSED")
+  })
+
+  it("stays idle (not an error) when nothing has been configured yet", async () => {
+    vi.mocked(getStatus).mockResolvedValue({ configured: false, connected: false, serverDomain: null, serverVersion: null })
+    const store = useConnectionStore()
+
+    await store.testConnection()
+
+    expect(store.status).toBe("idle")
+    expect(store.isConfigured).toBe(false)
+  })
+
+  it("saves new connection details via the backend, which validates before persisting", async () => {
+    vi.mocked(setServerConfig).mockResolvedValue({
+      status: "ok",
+      serverDomain: "dns.villa58.lan",
+      serverVersion: "15.4",
+    })
+    const store = useConnectionStore()
+
+    await store.setConfig("http://10.0.60.60:5380", "secret-token")
+
+    expect(setServerConfig).toHaveBeenCalledWith("http://10.0.60.60:5380", "secret-token")
+    expect(store.isConfigured).toBe(true)
+    expect(store.status).toBe("connected")
+    expect(store.serverDomain).toBe("dns.villa58.lan")
+  })
+
+  it("shows a readable error, not a raw stack trace, when saving invalid connection details fails", async () => {
+    vi.mocked(setServerConfig).mockRejectedValue(new AppApiError("Invalid token or session expired.", 400))
+    const store = useConnectionStore()
+
+    await store.setConfig("http://10.0.60.60:5380", "wrong-token")
 
     expect(store.status).toBe("error")
     expect(store.error).toBe("Invalid token or session expired.")
-  })
-
-  it("refuses to test when the server URL or token is missing", async () => {
-    const store = useConnectionStore()
-
-    await store.testConnection()
-
-    expect(store.status).toBe("error")
-    expect(getUserSession).not.toHaveBeenCalled()
-  })
-
-  it("clears config and status on disconnect", () => {
-    const store = useConnectionStore()
-    store.setConfig("http://10.0.60.60:5380", "secret-token")
-
-    store.disconnect()
-
-    expect(store.baseUrl).toBe("")
-    expect(store.token).toBe("")
     expect(store.isConfigured).toBe(false)
-    expect(localStorage.getItem("resolvr.connection")).toBeNull()
   })
 })

@@ -31,17 +31,15 @@ describe("technitium API client", () => {
     vi.unstubAllGlobals()
   })
 
-  it("calls the backend proxy with the credentials as headers, not query params", async () => {
+  it("calls the backend proxy, authenticated via the session cookie rather than per-request credentials", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ username: "admin", info: { version: "15.4" } }))
 
     await getUserSession(credentials)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [calledUrl, calledInit] = fetchMock.mock.calls[0]!
-    const headers = new Headers(calledInit?.headers)
     expect(String(calledUrl)).toBe("http://localhost:8787/api/technitium/user/session/get")
-    expect(headers.get("X-Technitium-Base-Url")).toBe("http://10.0.60.60:5380")
-    expect(headers.get("X-Technitium-Token")).toBe("secret-token")
+    expect(calledInit?.credentials).toBe("include")
   })
 
   it("builds query params from the duration type on dashboard stats", async () => {
@@ -93,7 +91,7 @@ describe("technitium API client", () => {
     await expect(getUserSession(credentials)).rejects.toThrow(TechnitiumApiError)
   })
 
-  it("returns a Blob and filename for export endpoints, authenticated via headers", async () => {
+  it("returns a Blob and filename for export endpoints, authenticated via the session cookie", async () => {
     const csv = "domain\nexample.com\n"
     fetchMock.mockResolvedValue(
       new Response(csv, {
@@ -110,7 +108,6 @@ describe("technitium API client", () => {
     expect(result.filename).toBe("blocked.csv")
     expect(await result.blob.text()).toBe(csv)
     const [, calledInit] = fetchMock.mock.calls[0]!
-    const headers = new Headers(calledInit?.headers)
-    expect(headers.get("X-Technitium-Token")).toBe("secret-token")
+    expect(calledInit?.credentials).toBe("include")
   })
 })

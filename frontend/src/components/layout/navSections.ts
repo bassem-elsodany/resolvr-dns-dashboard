@@ -12,11 +12,13 @@ export type NavIconName =
   | "server"
   | "sessions"
   | "connect"
+  | "users"
 
 export interface NavItem {
   to: string
   label: string
   icon: NavIconName
+  adminOnly?: boolean
 }
 
 export interface NavSection {
@@ -53,6 +55,7 @@ export const navSections: NavSection[] = [
       { to: "/apps", label: "Apps", icon: "apps" },
       { to: "/server", label: "Server Info", icon: "server" },
       { to: "/sessions", label: "Sessions", icon: "sessions" },
+      { to: "/users", label: "Users", icon: "users", adminOnly: true },
     ],
   },
 ]

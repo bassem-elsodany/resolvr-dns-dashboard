@@ -65,5 +65,10 @@ defineProps<{ name: NavIconName }>()
     <template v-else-if="name === 'connect'">
       <path d="M9 3v4M15 3v4M6 8h12l-1 4.5a5 5 0 0 1-5 4V20M9 20h6" />
     </template>
+    <template v-else-if="name === 'users'">
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 19c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5" />
+      <path d="M16 4.2a3.2 3.2 0 0 1 0 6.2M18 13.7c2 .6 3 2.3 3 5.3" />
+    </template>
   </svg>
 </template>

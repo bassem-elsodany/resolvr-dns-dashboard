@@ -11,6 +11,14 @@ services:
       # the backend's CORS check compares against this exactly.
       - FRONTEND_ORIGIN=http://localhost:8080
       - PORT=8787
+      # SQLite file for this dashboard's own users/sessions/connection
+      # config — lives on the named volume below, not inside the DNS
+      # server. Change ADMIN_PASSWORD before any non-local deployment.
+      - DB_PATH=/app/data/resolvr.db
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=change-me-on-first-login
+    volumes:
+      - resolvr-data:/app/data
     restart: unless-stopped
 
   frontend:
@@ -27,3 +35,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  resolvr-data:

@@ -9,19 +9,24 @@ import { useServerUpdateStore } from "../../stores/serverUpdate"
 import { useSidebarCountsStore } from "../../stores/sidebarCounts"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import OverviewView from "../../views/overview/OverviewView.vue"
 import ClientsView from "../../views/monitoring/ClientsView.vue"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
+  return { ...actual, checkForUpdate: vi.fn().mockResolvedValue({ response: { updateAvailable: false } }) }
+})
+
+vi.mock("../../api/app", async () => {
+  const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
   return {
     ...actual,
-    checkForUpdate: vi.fn().mockResolvedValue({ response: { updateAvailable: false } }),
-    getUserSession: vi.fn(),
+    getStatus: vi.fn().mockResolvedValue({ configured: false, connected: false, serverDomain: null, serverVersion: null }),
   }
 })
 
-import { getUserSession } from "../../api/technitium"
+import { getStatus } from "../../api/app"
 
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
@@ -35,14 +40,27 @@ function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes })
 }
 
+// Most AppShell chrome (nav list minus admin-only items, sidebar
+// status, topbar) is the same for any signed-in role — these tests run
+// as an admin unless a test is specifically about role gating, since
+// admin is the superset view.
+function signInAsAdmin(): void {
+  const auth = useAuthStore()
+  auth.user = { id: 1, username: "admin", role: "admin" }
+  auth.checked = true
+}
+
 describe("AppShell", () => {
   beforeEach(() => {
     localStorage.clear()
     setActivePinia(createPinia())
-    vi.mocked(getUserSession).mockReset()
+    vi.mocked(getStatus)
+      .mockReset()
+      .mockResolvedValue({ configured: false, connected: false, serverDomain: null, serverVersion: null })
   })
 
-  it("renders a nav link for every sidebar item in the approved wireframe", async () => {
+  it("renders a nav link for every sidebar item in the approved wireframe, when signed in as admin", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -54,7 +72,27 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("Connection Settings")
   })
 
+  it("hides admin-only nav items (Users, Connection Settings) for a viewer", async () => {
+    const auth = useAuthStore()
+    auth.user = { id: 2, username: "reader", role: "viewer" }
+    auth.checked = true
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    // Scoped to the sidebar, since OverviewView's own "not connected"
+    // prompt also links to /connect with the literal text "Connection
+    // Settings" — that's unrelated to the admin-only sidebar nav item.
+    const sidebarLinks = wrapper.get("#app-sidebar").findAll("a").map((a) => a.text())
+    expect(sidebarLinks).not.toContain("Users")
+    expect(sidebarLinks.some((t) => t.includes("Connection Settings"))).toBe(false)
+    // Non-admin-only items are still all there.
+    expect(sidebarLinks).toContain("Clients")
+    expect(sidebarLinks.some((t) => t.startsWith("Server Info"))).toBe(true)
+  })
+
   it("renders an icon for every nav link, matching the wireframe's line icons", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -64,6 +102,7 @@ describe("AppShell", () => {
   })
 
   it("highlights the active route's nav link", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.push("/clients")
@@ -75,6 +114,7 @@ describe("AppShell", () => {
   })
 
   it("shows 'Not connected' in the sidebar when the connection store is idle", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -83,6 +123,7 @@ describe("AppShell", () => {
   })
 
   it("shows the server domain and version when the connection store is connected", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -98,6 +139,7 @@ describe("AppShell", () => {
   })
 
   it("toggles the mobile sidebar open state when the nav toggle button is clicked", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -110,31 +152,43 @@ describe("AppShell", () => {
     expect(sidebar.classes()).toContain("translate-x-0")
   })
 
-  it("re-validates a saved connection on mount even when landing on a page other than /connect", async () => {
-    // Regression test: testConnection() used to only run from
+  it("checks the admin-configured connection status on mount even when landing on a page other than /connect", async () => {
+    // Regression test: the connection check used to only run from
     // ConnectView's own onMounted, so navigating straight to any other
-    // route with a valid saved token left the sidebar stuck on "Not
-    // connected" forever — confirmed live with a real screenshot before
-    // this fix. AppShell is the one component mounted on every route.
-    vi.mocked(getUserSession).mockResolvedValue({
-      username: "admin",
-      info: { version: "15.4", dnsServerDomain: "dns.villa58.lan", uptimestamp: "", clusterInitialized: false },
+    // route left the sidebar stuck on "Not connected" forever —
+    // confirmed live with a real screenshot before this fix. AppShell
+    // is the one component mounted on every route.
+    signInAsAdmin()
+    vi.mocked(getStatus).mockResolvedValue({
+      configured: true,
+      connected: true,
+      serverDomain: "dns.villa58.lan",
+      serverVersion: "15.4",
     })
     const router = makeRouter()
     await router.push("/clients") // not /connect
-    const connection = useConnectionStore()
-    connection.setConfig("http://10.0.60.60:5380", "secret-token")
 
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
     await flushPromises()
 
-    expect(getUserSession).toHaveBeenCalled()
+    expect(getStatus).toHaveBeenCalled()
     expect(wrapper.text()).toContain("dns.villa58.lan")
     expect(wrapper.text()).not.toContain("Not connected")
   })
 
+  it("shows the logged-in username and a logout control", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    expect(wrapper.text()).toContain("admin")
+    expect(wrapper.find("#logout-button").exists()).toBe(true)
+  })
+
   it("shows the Server Info update badge only when the shared serverUpdate store flags one", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -148,6 +202,7 @@ describe("AppShell", () => {
   })
 
   it("renders the wireframe's topbar time-range control and refresh button on every page", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -158,6 +213,7 @@ describe("AppShell", () => {
   })
 
   it("clicking a topbar range button updates the shared timeRange store", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -169,6 +225,7 @@ describe("AppShell", () => {
   })
 
   it("clicking the topbar refresh button increments the shared refresh store's tick", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -180,6 +237,7 @@ describe("AppShell", () => {
   })
 
   it("shows sidebar count badges (Zones, Blocked Zones, Apps) from the sidebarCounts store", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
@@ -199,6 +257,7 @@ describe("AppShell", () => {
   })
 
   it("hides the Clients badge when no client is rate-limited, shows it when one is", async () => {
+    signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
