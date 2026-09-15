@@ -1,27 +1,41 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, onMounted } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { getServerConfig } from "../../api/app"
 
 const connection = useConnectionStore()
-const baseUrlInput = ref(connection.baseUrl)
-const tokenInput = ref(connection.token)
+const baseUrlInput = ref("")
+const tokenInput = ref("")
+
+// Loads the currently saved connection details (this page is
+// admin-only — see the router guard — so it's safe to fetch the raw
+// token here) to prefill the form for editing.
+onMounted(async () => {
+  try {
+    const config = await getServerConfig()
+    baseUrlInput.value = config.baseUrl
+    tokenInput.value = config.token
+  } catch {
+    // No config saved yet, or it couldn't be loaded — leave the form
+    // blank rather than blocking the page on it.
+  }
+})
 
 async function onTestConnection() {
-  connection.setConfig(baseUrlInput.value, tokenInput.value)
-  await connection.testConnection()
+  await connection.setConfig(baseUrlInput.value, tokenInput.value)
 }
 
-// AppShell.vue re-validates a previously saved connection on mount
-// (it's always mounted, unlike this view) — no need to duplicate that
-// here, which would just double the request when the user is actually
-// on this page.
+// AppShell.vue re-validates the saved connection on mount (it's always
+// mounted, unlike this view) — no need to duplicate that here, which
+// would just double the request when the user is actually on this page.
 </script>
 
 <template>
   <main class="mx-auto max-w-xl px-6 py-16">
     <h1 class="text-2xl font-semibold tracking-tight">Connection Settings</h1>
     <p class="mt-1 text-sm text-gray-500">
-      Point Resolvr at your Technitium DNS Server &mdash; stored locally, never sent anywhere else.
+      Point Resolvr at your Technitium DNS Server &mdash; saved here for everyone who signs into this
+      dashboard, not just this browser.
     </p>
 
     <form class="mt-8 flex flex-col gap-4" @submit.prevent="onTestConnection">

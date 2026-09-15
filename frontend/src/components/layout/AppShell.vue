@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from "vue"
+import { useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useThemeStore } from "../../stores/theme"
 import { useServerUpdateStore } from "../../stores/serverUpdate"
 import { useSidebarCountsStore } from "../../stores/sidebarCounts"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import type { StatsDuration } from "../../api/technitium"
 import { navSections } from "./navSections"
 import NavIcon from "./NavIcon.vue"
@@ -16,7 +18,14 @@ const serverUpdate = useServerUpdateStore()
 const sidebarCounts = useSidebarCountsStore()
 const timeRange = useTimeRangeStore()
 const refresh = useRefreshStore()
+const auth = useAuthStore()
+const router = useRouter()
 const mobileOpen = ref(false)
+
+async function onLogout(): Promise<void> {
+  await auth.logout()
+  void router.push("/login")
+}
 
 const ranges: { key: StatsDuration; label: string }[] = [
   { key: "LastHour", label: "1H" },
@@ -39,15 +48,15 @@ watch(
 
 // AppShell mounts once regardless of which route the app lands on
 // (unlike ConnectView, which only mounts when the user is actually on
-// /connect) — this is the one place that reliably re-validates a saved
-// connection on every load, so the sidebar's status dot doesn't get
-// stuck on "Not connected" just because the user landed on, say,
-// /logs directly. Confirmed live: navigating straight to /logs with a
-// valid saved token left the sidebar reading "Not connected" even
-// while the page streamed real data, because only ConnectView ever
-// called testConnection().
+// /connect) — this is the one place that reliably checks the
+// admin-configured connection on every load, so the sidebar's status
+// dot doesn't get stuck on "Not connected" just because the user
+// landed on, say, /logs directly. Unconditional now that connection
+// state lives server-side (see stores/connection.ts) — there's no
+// local flag to check first the way a synchronously-loaded
+// localStorage value used to allow.
 onMounted(() => {
-  if (connection.isConfigured) void connection.testConnection()
+  void connection.testConnection()
 })
 
 // Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
@@ -118,7 +127,7 @@ function navBadgeClass(to: string): string {
           {{ section.label }}
         </div>
         <router-link
-          v-for="item in section.items"
+          v-for="item in section.items.filter((i) => !i.adminOnly || auth.isAdmin)"
           :key="item.to"
           :to="item.to"
           class="nav-link flex min-h-[33px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-gray-400 transition-colors hover:bg-background-hover hover:text-fg"
@@ -157,6 +166,7 @@ function navBadgeClass(to: string): string {
           </div>
         </div>
         <router-link
+          v-if="auth.isAdmin"
           to="/connect"
           class="nav-link flex min-h-[33px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-gray-400 hover:bg-background-hover hover:text-fg"
           active-class="!bg-background-hover !text-fg"
@@ -165,6 +175,17 @@ function navBadgeClass(to: string): string {
           <NavIcon name="connect" />
           Connection Settings
         </router-link>
+        <div v-if="auth.user" class="flex items-center justify-between gap-2 px-1 py-0.5">
+          <span class="truncate text-[11.5px] text-gray-500" :title="auth.user.username">{{ auth.user.username }}</span>
+          <button
+            id="logout-button"
+            type="button"
+            class="flex-none text-[11.5px] font-semibold text-accent"
+            @click="onLogout"
+          >
+            Log out
+          </button>
+        </div>
       </div>
     </aside>
 

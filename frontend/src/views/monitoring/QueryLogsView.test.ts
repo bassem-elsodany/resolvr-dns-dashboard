@@ -54,7 +54,7 @@ async function mountConnected() {
   await router.push("/logs")
   const wrapper = mount(QueryLogsView, { global: { plugins: [router] } })
   const connection = useConnectionStore()
-  connection.setConfig("http://192.168.1.53:5380", "secret-token")
+  connection.isConfigured = true
   await flushPromises()
   return { wrapper, connection, router }
 }
@@ -303,7 +303,7 @@ describe("QueryLogsView", () => {
     const router = makeRouter()
     await router.push("/logs?client=192.168.1.30")
     const wrapper = mount(QueryLogsView, { global: { plugins: [router] } })
-    useConnectionStore().setConfig("http://192.168.1.53:5380", "secret-token")
+    useConnectionStore().isConfigured = true
     await flushPromises()
 
     const clientFilterValue = (wrapper.get("#filter-client").element as HTMLInputElement).value
@@ -314,7 +314,7 @@ describe("QueryLogsView", () => {
     const router = makeRouter()
     await router.push("/logs?qname=sessions.bugsnag.com")
     mount(QueryLogsView, { global: { plugins: [router] } })
-    useConnectionStore().setConfig("http://192.168.1.53:5380", "secret-token")
+    useConnectionStore().isConfigured = true
     await flushPromises()
 
     expect(queryLogs).toHaveBeenCalledWith(

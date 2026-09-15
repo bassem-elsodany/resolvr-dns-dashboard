@@ -18,7 +18,7 @@ function flushPromises() {
 async function mountConnected() {
   const wrapper = mount(SessionsView, { global: { stubs: { RouterLink: true } } })
   const connection = useConnectionStore()
-  connection.setConfig("http://192.168.1.53:5380", "secret-token")
+  connection.isConfigured = true
   await flushPromises()
   return wrapper
 }

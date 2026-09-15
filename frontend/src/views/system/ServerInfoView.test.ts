@@ -35,7 +35,7 @@ const sampleSettings = {
 async function mountConnected() {
   const wrapper = mount(ServerInfoView, { global: { stubs: { RouterLink: true } } })
   const connection = useConnectionStore()
-  connection.setConfig("http://192.168.1.53:5380", "secret-token")
+  connection.isConfigured = true
   await flushPromises()
   return wrapper
 }
@@ -84,7 +84,7 @@ describe("ServerInfoView", () => {
 
     const wrapper = mount(ServerInfoView, { global: { stubs: { RouterLink: true } } })
     const connection = useConnectionStore()
-    connection.setConfig("http://192.168.1.53:5380", "secret-token")
+    connection.isConfigured = true
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain("Loading")

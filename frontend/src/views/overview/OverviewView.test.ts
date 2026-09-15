@@ -59,7 +59,7 @@ async function mountConnected() {
   const wrapper = mount(OverviewView, { global: { plugins: [router] } })
   await router.isReady()
   const connection = useConnectionStore()
-  connection.setConfig("http://192.168.1.53:5380", "secret-token")
+  connection.isConfigured = true
   return { wrapper, connection }
 }
 

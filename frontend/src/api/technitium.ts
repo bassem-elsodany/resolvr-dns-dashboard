@@ -28,7 +28,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8787"
 async function technitiumGet<T>(
   path: string,
   params: Record<string, string | number | boolean | undefined>,
-  credentials: TechnitiumCredentials,
+  _credentials: TechnitiumCredentials,
 ): Promise<T> {
   const url = new URL(`${BACKEND_URL}/api/technitium${path}`)
   for (const [key, value] of Object.entries(params)) {
@@ -37,12 +37,12 @@ async function technitiumGet<T>(
 
   let res: Response
   try {
-    res = await fetch(url, {
-      headers: {
-        "X-Technitium-Base-Url": credentials.baseUrl,
-        "X-Technitium-Token": credentials.token,
-      },
-    })
+    // The backend now sources the Technitium base URL/token itself from
+    // its admin-managed config (see backend/src/routes/configRoutes.ts) —
+    // all this call needs to prove is who's asking, via the session
+    // cookie. `credentials` (the parameter) is kept only so existing call
+    // sites don't all need to change; it's no longer sent anywhere.
+    res = await fetch(url, { credentials: "include" })
   } catch (err) {
     throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
   }
@@ -483,7 +483,7 @@ export interface DownloadedFile {
 async function technitiumGetBlob(
   path: string,
   params: Record<string, string | number | boolean | undefined>,
-  credentials: TechnitiumCredentials,
+  _credentials: TechnitiumCredentials,
 ): Promise<DownloadedFile> {
   const url = new URL(`${BACKEND_URL}/api/technitium${path}`)
   for (const [key, value] of Object.entries(params)) {
@@ -492,12 +492,7 @@ async function technitiumGetBlob(
 
   let res: Response
   try {
-    res = await fetch(url, {
-      headers: {
-        "X-Technitium-Base-Url": credentials.baseUrl,
-        "X-Technitium-Token": credentials.token,
-      },
-    })
+    res = await fetch(url, { credentials: "include" })
   } catch (err) {
     throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
   }
