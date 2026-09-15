@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 import { createRouter, createMemoryHistory } from "vue-router"
 import { navSections } from "./navSections"
 import AppShell from "./AppShell.vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useServerUpdateStore } from "../../stores/serverUpdate"
 import OverviewView from "../../views/OverviewView.vue"
 import ClientsView from "../../views/ClientsView.vue"
+
+vi.mock("../../api/technitium", async () => {
+  const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
+  return { ...actual, checkForUpdate: vi.fn().mockResolvedValue({ response: { updateAvailable: false } }) }
+})
 
 function makeRouter() {
   const routes = navSections
@@ -79,5 +85,18 @@ describe("AppShell", () => {
     await wrapper.get("#mobile-nav-toggle").trigger("click")
 
     expect(sidebar.classes()).toContain("translate-x-0")
+  })
+
+  it("shows the Server Info update badge only when the shared serverUpdate store flags one", async () => {
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+    expect(wrapper.find("#server-update-badge").exists()).toBe(false)
+
+    const serverUpdate = useServerUpdateStore()
+    serverUpdate.updateAvailable = true
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find("#server-update-badge").exists()).toBe(true)
   })
 })

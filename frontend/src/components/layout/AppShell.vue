@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useThemeStore } from "../../stores/theme"
+import { useServerUpdateStore } from "../../stores/serverUpdate"
 import { navSections } from "./navSections"
 
 const connection = useConnectionStore()
 const theme = useThemeStore()
+const serverUpdate = useServerUpdateStore()
 const mobileOpen = ref(false)
+
+watch(
+  () => connection.status,
+  (status) => {
+    if (status === "connected") void serverUpdate.check(connection.credentials)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -50,12 +60,18 @@ const mobileOpen = ref(false)
           v-for="item in section.items"
           :key="item.to"
           :to="item.to"
-          class="nav-link flex min-h-[33px] items-center rounded-lg px-2.5 text-[13px] font-medium text-gray-400 transition-colors hover:bg-background-hover hover:text-fg"
+          class="nav-link flex min-h-[33px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-gray-400 transition-colors hover:bg-background-hover hover:text-fg"
           active-class="!bg-background-hover !text-fg"
           exact-active-class="!bg-background-hover !text-fg"
           @click="mobileOpen = false"
         >
           {{ item.label }}
+          <span
+            v-if="item.to === '/server' && serverUpdate.updateAvailable"
+            id="server-update-badge"
+            class="ml-auto h-1.5 w-1.5 rounded-full bg-warn"
+            :title="serverUpdate.updateTitle ?? 'Update available'"
+          />
         </router-link>
       </nav>
 
