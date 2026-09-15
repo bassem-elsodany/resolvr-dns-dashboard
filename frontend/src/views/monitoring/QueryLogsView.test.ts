@@ -70,7 +70,17 @@ describe("QueryLogsView", () => {
     vi.mocked(listApps)
       .mockReset()
       .mockResolvedValue({
-        response: { apps: [{ name: "Query Logs (Sqlite)", description: "", version: "9.1.1", updateAvailable: false }] },
+        response: {
+          apps: [
+            {
+              name: "Query Logs (Sqlite)",
+              description: "",
+              version: "9.1.1",
+              updateAvailable: false,
+              dnsApps: [{ classPath: "QueryLogsSqlite.App", isQueryLogger: true }],
+            },
+          ],
+        },
       })
   })
 
@@ -152,6 +162,30 @@ describe("QueryLogsView", () => {
     expect(options).toEqual(["", "NoError", "NxDomain", "ServerFailure", "Refused"])
   })
 
+  it("offers a Record type filter (qtype) — a real gap: the API/type already supported it, but no control exposed it", async () => {
+    const { wrapper } = await mountConnected()
+
+    const select = wrapper.get("#filter-qtype")
+    expect(select.element.tagName).toBe("SELECT")
+    const options = select.findAll("option").map((o) => o.attributes("value"))
+    expect(options).toEqual(["", "A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "PTR", "SRV", "CAA", "ANY"])
+  })
+
+  it("filters the table by record type when the Record type dropdown changes", async () => {
+    const { wrapper } = await mountConnected()
+    vi.mocked(queryLogs).mockClear()
+
+    await wrapper.get("#filter-qtype").setValue("AAAA")
+    await wrapper.get("#filter-qtype").trigger("change")
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ qtype: "AAAA", pageNumber: 1 }),
+    )
+  })
+
   it("shows the wireframe's 'Showing X–Y of N' range text in the pagination footer", async () => {
     vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 45, totalPages: 3, entries: [sampleEntry] }))
 
@@ -170,6 +204,7 @@ describe("QueryLogsView", () => {
 
     expect(queryLogs).toHaveBeenCalledWith(
       expect.anything(),
+      expect.anything(),
       expect.objectContaining({ qname: "example.com", pageNumber: 1 }),
     )
   })
@@ -184,7 +219,11 @@ describe("QueryLogsView", () => {
     await wrapper.get("#next-page").trigger("click")
     await flushPromises()
 
-    expect(queryLogs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageNumber: 2 }))
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ pageNumber: 2 }),
+    )
   })
 
   it("polls the table every 5 seconds while Live is on, and stops when toggled off", async () => {
@@ -262,7 +301,11 @@ describe("QueryLogsView", () => {
     await wrapper.get("#export-csv").trigger("click")
     await flushPromises()
 
-    expect(exportLogs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ qname: "example.com" }))
+    expect(exportLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ qname: "example.com" }),
+    )
     expect(triggerDownload).toHaveBeenCalledWith({ blob: expect.any(Blob), filename: "query-logs.csv" })
   })
 
@@ -288,7 +331,17 @@ describe("QueryLogsView", () => {
 
   it("detects any of Technitium's Query Logs apps (Sqlite/MySQL/PostgreSQL/SQL Server), not just Sqlite", async () => {
     vi.mocked(listApps).mockResolvedValue({
-      response: { apps: [{ name: "Query Logs (MySQL)", description: "", version: "9.1.1", updateAvailable: false }] },
+      response: {
+        apps: [
+          {
+            name: "Query Logs (MySQL)",
+            description: "",
+            version: "9.1.1",
+            updateAvailable: false,
+            dnsApps: [{ classPath: "QueryLogsMySql.App", isQueryLogger: true }],
+          },
+        ],
+      },
     })
     vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 5 }))
 
@@ -296,7 +349,16 @@ describe("QueryLogsView", () => {
 
     expect(wrapper.find("#query-logs-app-missing").exists()).toBe(false)
     expect(wrapper.text()).toContain("sourced from the Query Logs (MySQL) app")
-    expect(queryLogs).toHaveBeenCalled()
+    // Regression: the app-missing check used to detect any installed
+    // Query Logs app, but the actual queryLogs()/exportLogs() calls
+    // still hardcoded the Sqlite variant's name/classPath — which
+    // would silently fail against a MySQL/PostgreSQL/SQL Server
+    // server. Both must now use the app that was actually detected.
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      { name: "Query Logs (MySQL)", classPath: "QueryLogsMySql.App" },
+      expect.anything(),
+    )
   })
 
   it("pre-filters by client when navigated to with a ?client= query param (from Overview's Top clients)", async () => {
@@ -318,6 +380,7 @@ describe("QueryLogsView", () => {
     await flushPromises()
 
     expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
       expect.anything(),
       expect.objectContaining({ qname: "sessions.bugsnag.com" }),
     )
@@ -362,6 +425,10 @@ describe("QueryLogsView", () => {
     await wrapper.get("tbody button[title='Filter Query Logs by this domain']").trigger("click")
     await flushPromises()
 
-    expect(queryLogs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ qname: sampleEntry.qname }))
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ qname: sampleEntry.qname }),
+    )
   })
 })

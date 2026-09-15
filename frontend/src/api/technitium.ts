@@ -340,26 +340,32 @@ export interface QueryLogFilters {
   qclass?: string
 }
 
-const QUERY_LOGS_APP = { name: "Query Logs (Sqlite)", classPath: "QueryLogsSqlite.App" }
+// Technitium ships several query-logging apps backed by different
+// databases (Sqlite/MySQL/PostgreSQL/SQL Server) — each has its own
+// classPath, so it must be looked up via listApps() (see
+// stores/queryLogsApp.ts) rather than hardcoded, or these calls would
+// silently fail against any server not using the Sqlite variant.
+export interface QueryLogsApp {
+  name: string
+  classPath: string
+}
 
 export function queryLogs(
   credentials: TechnitiumCredentials,
+  app: QueryLogsApp,
   filters: QueryLogFilters = {},
 ): Promise<QueryLogsResult> {
-  return technitiumGet(
-    ENDPOINTS.logsQuery,
-    { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
-    credentials,
-  )
+  return technitiumGet(ENDPOINTS.logsQuery, { name: app.name, classPath: app.classPath, ...filters }, credentials)
 }
 
 export function exportLogs(
   credentials: TechnitiumCredentials,
+  app: QueryLogsApp,
   filters: QueryLogFilters = {},
 ): Promise<DownloadedFile> {
   return technitiumGetBlob(
     ENDPOINTS.logsExport,
-    { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
+    { name: app.name, classPath: app.classPath, ...filters },
     credentials,
   )
 }
@@ -372,6 +378,11 @@ export interface DnsAppSummary {
   version: string
   updateVersion?: string
   updateAvailable: boolean
+  // Which capabilities this app's DNS component(s) provide — used to
+  // find the installed query-logging app (isQueryLogger) regardless of
+  // which one (Sqlite/MySQL/PostgreSQL/SQL Server/a third-party
+  // logger) it is, instead of matching on a hardcoded name/classPath.
+  dnsApps?: { classPath: string; isQueryLogger?: boolean }[]
 }
 
 export interface AppsListResult {

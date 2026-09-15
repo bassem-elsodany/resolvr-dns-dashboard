@@ -3,11 +3,11 @@ import { ref, reactive, computed, onMounted, watch } from "vue"
 import { useRoute } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
+import { useQueryLogsAppStore } from "../../stores/queryLogsApp"
 import {
   getTopStats,
   queryLogs,
   exportLogs,
-  listApps,
   TechnitiumApiError,
   type QueryLogEntry,
   type TopClientEntry,
@@ -25,6 +25,7 @@ import LiveToggle from "../../components/ui/LiveToggle.vue"
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
 const route = useRoute()
+const queryLogsApp = useQueryLogsAppStore()
 
 const ENTRIES_PER_PAGE = 20
 
@@ -34,6 +35,7 @@ const filters = reactive({
   responseType: "",
   protocol: "",
   rcode: "",
+  qtype: "",
 })
 const pageNumber = ref(1)
 
@@ -42,13 +44,6 @@ const loadError = ref<string | null>(null)
 const entries = ref<QueryLogEntry[]>([])
 const totalEntries = ref(0)
 const totalPages = ref(1)
-const appChecked = ref(false)
-const appMissing = ref(false)
-// Technitium ships four official query-logging apps backed by different
-// databases (Sqlite/MySQL/PostgreSQL/SQL Server) — the /api/logs/query
-// endpoint works the same regardless of which one is installed, so we
-// detect whichever is present instead of hardcoding the Sqlite variant.
-const installedLogAppName = ref<string | null>(null)
 
 const hostChips = ref<TopClientEntry[]>([])
 const hostInsight = ref<{
@@ -73,33 +68,18 @@ function activeFilters() {
   if (filters.responseType) f.responseType = filters.responseType
   if (filters.protocol) f.protocol = filters.protocol
   if (filters.rcode) f.rcode = filters.rcode
+  if (filters.qtype) f.qtype = filters.qtype
   return f
-}
-
-async function checkAppInstalled(): Promise<boolean> {
-  if (appChecked.value) return !appMissing.value
-  try {
-    const res = await listApps(connection.credentials)
-    const logApp = res.response.apps.find((app) => app.name.startsWith("Query Logs ("))
-    installedLogAppName.value = logApp?.name ?? null
-    appMissing.value = !logApp
-  } catch {
-    // If the check itself fails, don't block the page on it — the
-    // subsequent queryLogs() call will surface its own error.
-    appMissing.value = false
-  } finally {
-    appChecked.value = true
-  }
-  return !appMissing.value
 }
 
 async function loadTable(): Promise<void> {
   if (!connection.isConfigured) return
-  if (!(await checkAppInstalled())) return
+  await queryLogsApp.ensure(connection.credentials)
+  if (queryLogsApp.missing || !queryLogsApp.app) return
   loading.value = true
   loadError.value = null
   try {
-    const res = await queryLogs(connection.credentials, {
+    const res = await queryLogs(connection.credentials, queryLogsApp.app, {
       ...activeFilters(),
       pageNumber: pageNumber.value,
       entriesPerPage: ENTRIES_PER_PAGE,
@@ -137,13 +117,16 @@ function countFrom(result: PromiseSettledResult<Awaited<ReturnType<typeof queryL
 }
 
 async function loadHostInsight(entry: TopClientEntry): Promise<void> {
+  await queryLogsApp.ensure(connection.credentials)
+  if (!queryLogsApp.app) return
+  const app = queryLogsApp.app
   const { start, end } = durationToRange("LastDay")
   const base = { clientIpAddress: entry.name, start, end, entriesPerPage: 1 }
   const [totalRes, blockedRes, cacheRes, upstreamRes] = await Promise.allSettled([
-    queryLogs(connection.credentials, base),
-    queryLogs(connection.credentials, { ...base, responseType: "Blocked" }),
-    queryLogs(connection.credentials, { ...base, responseType: "CacheBlocked" }),
-    queryLogs(connection.credentials, { ...base, responseType: "UpstreamBlocked" }),
+    queryLogs(connection.credentials, app, base),
+    queryLogs(connection.credentials, app, { ...base, responseType: "Blocked" }),
+    queryLogs(connection.credentials, app, { ...base, responseType: "CacheBlocked" }),
+    queryLogs(connection.credentials, app, { ...base, responseType: "UpstreamBlocked" }),
   ])
   const cacheBlocked = countFrom(cacheRes)
   const upstreamBlocked = countFrom(upstreamRes)
@@ -235,8 +218,9 @@ function goToPage(delta: number): void {
 }
 
 async function onExport(): Promise<void> {
+  if (!queryLogsApp.app) return
   try {
-    const file = await exportLogs(connection.credentials, activeFilters())
+    const file = await exportLogs(connection.credentials, queryLogsApp.app, activeFilters())
     triggerDownload(file)
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not export query logs."
@@ -270,8 +254,8 @@ watch(() => refresh.tick, loadTable)
       <div>
         <h1 class="text-lg font-semibold tracking-tight text-fg">Query Logs</h1>
         <p class="mt-1 text-sm text-gray-500">
-          Every request answered by the resolver<span v-if="installedLogAppName">
-            &middot; sourced from the {{ installedLogAppName }} app</span
+          Every request answered by the resolver<span v-if="queryLogsApp.name">
+            &middot; sourced from the {{ queryLogsApp.name }} app</span
           ><span v-if="totalEntries > 0"> &middot; {{ totalEntries.toLocaleString() }} entries</span>
         </p>
       </div>
@@ -294,7 +278,7 @@ watch(() => refresh.tick, loadTable)
       query logs.
     </p>
 
-    <div v-else-if="appMissing" id="query-logs-app-missing" class="rounded-lg border border-warn/35 bg-warn/10 px-4 py-3 text-sm">
+    <div v-else-if="queryLogsApp.missing" id="query-logs-app-missing" class="rounded-lg border border-warn/35 bg-warn/10 px-4 py-3 text-sm">
       No <span class="font-mono">Query Logs</span> app is installed on this server, so no query history is
       available. Install one from the Technitium web console's Apps section — Sqlite, MySQL, PostgreSQL and
       SQL Server variants are all supported here.
@@ -331,7 +315,7 @@ watch(() => refresh.tick, loadTable)
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
           <div class="flex flex-col gap-1">
             <label for="filter-client" class="text-[11px] font-semibold text-gray-500">Client IP</label>
             <input
@@ -398,6 +382,28 @@ watch(() => refresh.tick, loadTable)
               <option value="NxDomain">NxDomain</option>
               <option value="ServerFailure">ServerFailure</option>
               <option value="Refused">Refused</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="filter-qtype" class="text-[11px] font-semibold text-gray-500">Record type</label>
+            <select
+              id="filter-qtype"
+              v-model="filters.qtype"
+              class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+              @change="onFilterChange"
+            >
+              <option value="">All</option>
+              <option value="A">A</option>
+              <option value="AAAA">AAAA</option>
+              <option value="CNAME">CNAME</option>
+              <option value="MX">MX</option>
+              <option value="TXT">TXT</option>
+              <option value="NS">NS</option>
+              <option value="SOA">SOA</option>
+              <option value="PTR">PTR</option>
+              <option value="SRV">SRV</option>
+              <option value="CAA">CAA</option>
+              <option value="ANY">ANY</option>
             </select>
           </div>
         </div>

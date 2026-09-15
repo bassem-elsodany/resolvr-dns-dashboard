@@ -5,10 +5,10 @@ import { createRouter, createMemoryHistory } from "vue-router"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
-  return { ...actual, getTopStats: vi.fn(), queryLogs: vi.fn() }
+  return { ...actual, getTopStats: vi.fn(), queryLogs: vi.fn(), listApps: vi.fn() }
 })
 
-import { getTopStats, queryLogs, TechnitiumApiError } from "../../api/technitium"
+import { getTopStats, queryLogs, listApps, TechnitiumApiError } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
@@ -44,6 +44,21 @@ describe("ClientsView", () => {
     setActivePinia(createPinia())
     vi.mocked(getTopStats).mockReset()
     vi.mocked(queryLogs).mockReset()
+    vi.mocked(listApps)
+      .mockReset()
+      .mockResolvedValue({
+        response: {
+          apps: [
+            {
+              name: "Query Logs (Sqlite)",
+              description: "",
+              version: "9.1.1",
+              updateAvailable: false,
+              dnsApps: [{ classPath: "QueryLogsSqlite.App", isQueryLogger: true }],
+            },
+          ],
+        },
+      })
   })
 
   it("prompts to connect when no server is configured", async () => {
@@ -60,7 +75,7 @@ describe("ClientsView", () => {
     vi.mocked(getTopStats).mockResolvedValue({
       response: { topClients: [{ name: "10.0.10.30", domain: "unifi.villa58.lan", hits: 842, rateLimited: false }] },
     })
-    vi.mocked(queryLogs).mockImplementation((_creds, filters) => {
+    vi.mocked(queryLogs).mockImplementation((_creds, _app, filters) => {
       if (filters?.responseType === "Blocked") {
         return Promise.resolve({ response: { pageNumber: 1, totalPages: 1, totalEntries: 200, entries: [] } })
       }
