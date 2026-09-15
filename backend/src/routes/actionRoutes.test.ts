@@ -86,6 +86,52 @@ describe("actionRoutes", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("adds a domain to the Blocked Zones list", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/block-domain").send({ domain: "example.com" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/blocked/add");
+    expect(url.searchParams.get("domain")).toBe("example.com");
+  });
+
+  it("rejects block-domain without a domain, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/block-domain").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("removes a domain from the Blocked Zones list", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/unblock-domain").send({ domain: "example.com" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/blocked/delete");
+    expect(url.searchParams.get("domain")).toBe("example.com");
+  });
+
+  it("rejects unblock-domain without a domain, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/unblock-domain").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("revokes a session by partialToken", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok", response: {} }));
     const { app } = testApp(fetchImpl);

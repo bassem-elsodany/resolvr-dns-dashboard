@@ -88,6 +88,61 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
     res.json({ status: "ok" });
   });
 
+  // Lets an admin add or remove individual domains from the Blocked
+  // Zones list shown on BlockedZonesView.vue — the same domain-level
+  // control Technitium's own web console offers (Blocked: Modify /
+  // Delete permissions), distinct from the block-list-urls feeds
+  // above: this adds/removes one specific domain directly.
+  router.post("/block-domain", async (req, res) => {
+    const { domain } = req.body ?? {};
+    if (typeof domain !== "string" || !domain.trim()) {
+      res.status(400).json({ error: "domain is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/blocked/add",
+      { domain: domain.trim() },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
+  router.post("/unblock-domain", async (req, res) => {
+    const { domain } = req.body ?? {};
+    if (typeof domain !== "string" || !domain.trim()) {
+      res.status(400).json({ error: "domain is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/blocked/delete",
+      { domain: domain.trim() },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
   router.post("/revoke-session", async (req, res) => {
     const { partialToken } = req.body ?? {};
     if (typeof partialToken !== "string" || !partialToken) {

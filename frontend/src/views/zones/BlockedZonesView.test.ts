@@ -9,11 +9,11 @@ vi.mock("../../api/technitium", async () => {
 vi.mock("../../lib/download", () => ({ triggerDownload: vi.fn() }))
 vi.mock("../../api/app", async () => {
   const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
-  return { ...actual, updateBlockListUrls: vi.fn() }
+  return { ...actual, updateBlockListUrls: vi.fn(), blockDomain: vi.fn(), unblockDomain: vi.fn() }
 })
 
 import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
-import { updateBlockListUrls, AppApiError } from "../../api/app"
+import { updateBlockListUrls, blockDomain, unblockDomain, AppApiError } from "../../api/app"
 import { triggerDownload } from "../../lib/download"
 import { useConnectionStore } from "../../stores/connection"
 import { useAuthStore } from "../../stores/auth"
@@ -41,6 +41,8 @@ describe("BlockedZonesView", () => {
     vi.mocked(triggerDownload).mockReset()
     vi.mocked(getSettings).mockReset().mockResolvedValue({ response: {} as never })
     vi.mocked(updateBlockListUrls).mockReset()
+    vi.mocked(blockDomain).mockReset()
+    vi.mocked(unblockDomain).mockReset()
   })
 
   it("renders the real blocked zone list as a tree of root domains (13 TLD-level entries on the live server)", async () => {
@@ -102,6 +104,69 @@ describe("BlockedZonesView", () => {
     expect(listBlockedZones).toHaveBeenCalledWith(expect.anything(), "com")
     expect(wrapper.text()).toContain("pornhub.com")
     expect(wrapper.text()).toContain("tiktok.com")
+  })
+
+  describe("adding and removing blocked domains (admin only)", () => {
+    it("hides the Block domain form for a viewer", async () => {
+      useAuthStore().user = { id: 2, username: "reader", role: "viewer" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+
+      const wrapper = await mountConnected()
+
+      expect(wrapper.find("#new-blocked-domain").exists()).toBe(false)
+    })
+
+    it("lets an admin block a new domain, then refreshes the root list", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones)
+        .mockResolvedValueOnce({ response: { domain: "", zones: ["com"], records: [] } })
+        .mockResolvedValueOnce({ response: { domain: "", zones: ["com", "net"], records: [] } })
+      vi.mocked(blockDomain).mockResolvedValue({ status: "ok" })
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#new-blocked-domain").setValue("example.net")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(blockDomain).toHaveBeenCalledWith("example.net")
+      expect(listBlockedZones).toHaveBeenCalledTimes(2)
+      expect(wrapper.text()).toContain("net")
+    })
+
+    it("shows a readable error, not a raw stack trace, when blocking a new domain fails", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } })
+      vi.mocked(blockDomain).mockRejectedValue(new AppApiError("Invalid domain name.", 400))
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#new-blocked-domain").setValue("not a domain")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(wrapper.find("#add-blocked-domain-error").text()).toBe("Invalid domain name.")
+    })
+
+    it("passes unblockDomain down to the tree so an admin can remove an actual blocked domain", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listBlockedZones).mockResolvedValue({
+        response: { domain: "", zones: ["example.com"], records: [] },
+      })
+      vi.mocked(unblockDomain).mockResolvedValue({ status: "ok" })
+      const wrapper = await mountConnected()
+      const rootNode = wrapper.findComponent(ZoneTreeNode)
+
+      expect(rootNode.props("deleteDomain")).toBe(unblockDomain)
+    })
+
+    it("does not pass a delete function down to the tree for a viewer", async () => {
+      vi.mocked(listBlockedZones).mockResolvedValue({
+        response: { domain: "", zones: ["example.com"], records: [] },
+      })
+      const wrapper = await mountConnected()
+      const rootNode = wrapper.findComponent(ZoneTreeNode)
+
+      expect(rootNode.props("deleteDomain")).toBeUndefined()
+    })
   })
 
   describe("block list sources", () => {

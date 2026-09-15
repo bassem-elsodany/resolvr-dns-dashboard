@@ -116,3 +116,11 @@ export function revokeSession(partialToken: string): Promise<{ status: string }>
 export function updateBlockListUrls(urls: string[]): Promise<{ status: string }> {
   return call("/api/actions/block-list-urls", { method: "PUT", body: JSON.stringify({ urls }) })
 }
+
+export function blockDomain(domain: string): Promise<{ status: string }> {
+  return call("/api/actions/block-domain", { method: "POST", body: JSON.stringify({ domain }) })
+}
+
+export function unblockDomain(domain: string): Promise<{ status: string }> {
+  return call("/api/actions/unblock-domain", { method: "POST", body: JSON.stringify({ domain }) })
+}
