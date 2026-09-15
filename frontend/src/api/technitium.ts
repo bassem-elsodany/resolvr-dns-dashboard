@@ -1,0 +1,474 @@
+// Typed client for the Technitium DNS Server API, called through the
+// backend proxy (backend/src/app.ts) — never directly, since Technitium
+// sends no CORS headers. See tasks/plan.md for why the proxy exists.
+
+export interface TechnitiumCredentials {
+  baseUrl: string
+  token: string
+}
+
+export class TechnitiumApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "TechnitiumApiError"
+    this.status = status
+  }
+}
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8787"
+
+async function technitiumGet<T>(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+  credentials: TechnitiumCredentials,
+): Promise<T> {
+  const url = new URL(`${BACKEND_URL}/api/technitium${path}`)
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) url.searchParams.set(key, String(value))
+  }
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: {
+        "X-Technitium-Base-Url": credentials.baseUrl,
+        "X-Technitium-Token": credentials.token,
+      },
+    })
+  } catch (err) {
+    throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
+  }
+
+  const body = await res.json().catch(() => null)
+
+  if (!res.ok) {
+    throw new TechnitiumApiError(body?.error ?? `Request failed with status ${res.status}`, res.status)
+  }
+  if (body?.status === "error") {
+    throw new TechnitiumApiError(body.errorMessage ?? "Technitium API returned an error", res.status)
+  }
+
+  return body as T
+}
+
+// ---------- User ----------
+
+export interface UserSessionInfo {
+  username: string
+  info: {
+    version: string
+    dnsServerDomain: string
+    uptimestamp: string
+    clusterInitialized: boolean
+  }
+}
+
+export function getUserSession(credentials: TechnitiumCredentials): Promise<UserSessionInfo> {
+  return technitiumGet("/user/session/get", {}, credentials)
+}
+
+export interface CheckForUpdateResult {
+  response: {
+    updateAvailable: boolean
+    updateVersion?: string
+    updateTitle?: string
+  }
+}
+
+export function checkForUpdate(credentials: TechnitiumCredentials): Promise<CheckForUpdateResult> {
+  return technitiumGet("/user/checkForUpdate", {}, credentials)
+}
+
+// ---------- Dashboard ----------
+
+export type StatsDuration = "LastHour" | "LastDay" | "LastWeek" | "LastMonth" | "LastYear" | "Custom"
+
+export interface DashboardStatsResult {
+  response: {
+    stats: {
+      totalQueries: number
+      totalNoError: number
+      totalServerFailure: number
+      totalNxDomain: number
+      totalRefused: number
+      totalAuthoritative: number
+      totalRecursive: number
+      totalCached: number
+      totalBlocked: number
+      totalDropped: number
+      totalClients: number
+      zones: number
+      cachedEntries: number
+      allowedZones: number
+      blockedZones: number
+      allowListZones: number
+      blockListZones: number
+    }
+    mainChartData: {
+      labelFormat: string
+      labels: string[]
+      datasets: { label: string; data: number[] }[]
+    }
+  }
+}
+
+export function getDashboardStats(
+  type: StatsDuration,
+  credentials: TechnitiumCredentials,
+  opts: { utc?: boolean; start?: string; end?: string } = {},
+): Promise<DashboardStatsResult> {
+  return technitiumGet("/dashboard/stats/get", { type, ...opts }, credentials)
+}
+
+export type TopStatsType = "TopClients" | "TopDomains" | "TopBlockedDomains"
+
+export interface TopClientEntry {
+  name: string
+  domain?: string
+  hits: number
+  rateLimited: boolean
+}
+export interface TopDomainEntry {
+  name: string
+  hits: number
+}
+
+export interface TopStatsResult {
+  response: {
+    topClients?: TopClientEntry[]
+    topDomains?: TopDomainEntry[]
+    topBlockedDomains?: TopDomainEntry[]
+  }
+}
+
+export function getTopStats(
+  statsType: TopStatsType,
+  type: StatsDuration,
+  credentials: TechnitiumCredentials,
+  opts: { limit?: number; noReverseLookup?: boolean; onlyRateLimitedClients?: boolean } = {},
+): Promise<TopStatsResult> {
+  return technitiumGet("/dashboard/stats/getTop", { statsType, type, ...opts }, credentials)
+}
+
+// ---------- Zones ----------
+
+export interface ZoneSummary {
+  name: string
+  type: string
+  internal?: boolean
+  dnssecStatus: string
+  soaSerial: number
+  disabled: boolean
+  lastModified: string
+  isExpired?: boolean
+  syncFailed?: boolean
+  notifyFailed?: boolean
+}
+
+export interface ZonesListResult {
+  response: {
+    pageNumber: number
+    totalPages: number
+    totalZones: number
+    zones: ZoneSummary[]
+  }
+}
+
+export function listZones(
+  credentials: TechnitiumCredentials,
+  opts: { pageNumber?: number; zonesPerPage?: number; filterName?: string; filterType?: string } = {},
+): Promise<ZonesListResult> {
+  return technitiumGet("/zones/list", opts, credentials)
+}
+
+export interface ZoneRecord {
+  name: string
+  type: string
+  ttl: string
+  rData: Record<string, unknown>
+  disabled?: boolean
+}
+
+export interface ZoneRecordsResult {
+  response: { zone: { name: string; type: string }; records: ZoneRecord[] }
+}
+
+export function getZoneRecords(
+  domain: string,
+  credentials: TechnitiumCredentials,
+): Promise<ZoneRecordsResult> {
+  return technitiumGet("/zones/records/get", { domain, listZone: true }, credentials)
+}
+
+// ---------- Cache ----------
+
+export interface CacheListResult {
+  response: { domain: string; zones: string[]; records: ZoneRecord[] }
+}
+
+export function listCache(domain: string, credentials: TechnitiumCredentials): Promise<CacheListResult> {
+  return technitiumGet("/cache/list", { domain }, credentials)
+}
+
+// ---------- Allowed / Blocked zones ----------
+
+export interface DomainListResult {
+  response: { domain: string; zones: string[]; records: ZoneRecord[] }
+}
+
+export function listAllowedZones(
+  credentials: TechnitiumCredentials,
+  domain = "",
+): Promise<DomainListResult> {
+  return technitiumGet("/allowed/list", { domain }, credentials)
+}
+
+export function exportAllowedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
+  return technitiumGetBlob("/allowed/export", {}, credentials)
+}
+
+export function listBlockedZones(
+  credentials: TechnitiumCredentials,
+  domain = "",
+): Promise<DomainListResult> {
+  return technitiumGet("/blocked/list", { domain }, credentials)
+}
+
+export function exportBlockedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
+  return technitiumGetBlob("/blocked/export", {}, credentials)
+}
+
+// ---------- DHCP ----------
+
+export interface DhcpScope {
+  name: string
+  enabled: boolean
+  startingAddress: string
+  endingAddress: string
+  subnetMask: string
+}
+
+export interface DhcpScopesResult {
+  response: { scopes: DhcpScope[] }
+}
+
+export function listDhcpScopes(credentials: TechnitiumCredentials): Promise<DhcpScopesResult> {
+  return technitiumGet("/dhcp/scopes/list", {}, credentials)
+}
+
+export interface DhcpLease {
+  scope: string
+  hardwareAddress: string
+  address: string
+  hostName: string | null
+  leaseObtained: string
+  leaseExpires: string
+}
+
+export interface DhcpLeasesResult {
+  response: { leases: DhcpLease[] }
+}
+
+export function listDhcpLeases(credentials: TechnitiumCredentials): Promise<DhcpLeasesResult> {
+  return technitiumGet("/dhcp/leases/list", {}, credentials)
+}
+
+// ---------- Query logs ----------
+
+export interface QueryLogEntry {
+  rowNumber: number
+  timestamp: string
+  clientIpAddress: string
+  protocol: string
+  responseType: string
+  responseRtt?: number
+  rcode: string
+  qname: string
+  qtype: string
+  qclass: string
+  answer: string | null
+}
+
+export interface QueryLogsResult {
+  response: {
+    pageNumber: number
+    totalPages: number
+    totalEntries: number
+    entries: QueryLogEntry[]
+  }
+}
+
+export interface QueryLogFilters {
+  pageNumber?: number
+  entriesPerPage?: number
+  descendingOrder?: boolean
+  start?: string
+  end?: string
+  clientIpAddress?: string
+  protocol?: string
+  responseType?: string
+  rcode?: string
+  qname?: string
+  qtype?: string
+  qclass?: string
+}
+
+const QUERY_LOGS_APP = { name: "Query Logs (Sqlite)", classPath: "QueryLogsSqlite.App" }
+
+export function queryLogs(
+  credentials: TechnitiumCredentials,
+  filters: QueryLogFilters = {},
+): Promise<QueryLogsResult> {
+  return technitiumGet(
+    "/logs/query",
+    { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
+    credentials,
+  )
+}
+
+export function exportLogs(
+  credentials: TechnitiumCredentials,
+  filters: QueryLogFilters = {},
+): Promise<DownloadedFile> {
+  return technitiumGetBlob(
+    "/logs/export",
+    { name: QUERY_LOGS_APP.name, classPath: QUERY_LOGS_APP.classPath, ...filters },
+    credentials,
+  )
+}
+
+// ---------- Apps ----------
+
+export interface DnsAppSummary {
+  name: string
+  description: string
+  version: string
+  updateVersion?: string
+  updateAvailable: boolean
+}
+
+export interface AppsListResult {
+  response: { apps: DnsAppSummary[] }
+}
+
+export function listApps(credentials: TechnitiumCredentials): Promise<AppsListResult> {
+  return technitiumGet("/apps/list", {}, credentials)
+}
+
+// ---------- Settings ----------
+
+export interface DnsSettings {
+  version: string
+  uptimestamp: string
+  dnsServerDomain: string
+  dnsServerLocalEndPoints: string[]
+  ipv6Mode: string
+  dnssecValidation: boolean
+  eDnsClientSubnet: boolean
+  udpPayloadSize: number
+  defaultRecordTtl: number
+  defaultNsRecordTtl: number
+  defaultSoaRecordTtl: number
+  qpmPrefixLimitsIPv4: { prefix: number; udpLimit: number; tcpLimit: number }[]
+  qpmLimitSampleMinutes: number
+  blockListNextUpdatedOn?: string
+  blockListUpdateIntervalHours?: number
+}
+
+export interface SettingsResult {
+  response: DnsSettings
+}
+
+export function getSettings(credentials: TechnitiumCredentials): Promise<SettingsResult> {
+  return technitiumGet("/settings/get", {}, credentials)
+}
+
+// ---------- DNS Client (resolver tool) ----------
+
+export interface ResolveResult {
+  response: {
+    result: Record<string, unknown>
+  }
+}
+
+export function resolveDnsQuery(
+  domain: string,
+  type: string,
+  credentials: TechnitiumCredentials,
+  opts: { server?: string; protocol?: string; dnssec?: boolean } = {},
+): Promise<ResolveResult> {
+  return technitiumGet(
+    "/dnsClient/resolve",
+    { domain, type, server: opts.server ?? "recursive-resolver", protocol: opts.protocol, dnssec: opts.dnssec },
+    credentials,
+  )
+}
+
+// ---------- Admin sessions ----------
+
+export interface AdminSession {
+  username: string
+  isCurrentSession: boolean
+  partialToken: string
+  type: string
+  tokenName: string | null
+  lastSeen: string
+  lastSeenRemoteAddress: string
+  lastSeenUserAgent: string
+}
+
+export interface AdminSessionsResult {
+  response: { sessions: AdminSession[] }
+}
+
+export function listAdminSessions(credentials: TechnitiumCredentials): Promise<AdminSessionsResult> {
+  return technitiumGet("/admin/sessions/list", {}, credentials)
+}
+
+// ---------- helpers ----------
+
+export interface DownloadedFile {
+  blob: Blob
+  filename: string
+}
+
+// Export endpoints return CSV, not JSON, and the proxy requires auth as
+// headers (not query params — see backend/src/app.ts), which a plain
+// <a href> download link can't send. So exports go through fetch() here
+// and the caller triggers the browser download from the returned Blob
+// (URL.createObjectURL + a temporary <a download>).
+async function technitiumGetBlob(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+  credentials: TechnitiumCredentials,
+): Promise<DownloadedFile> {
+  const url = new URL(`${BACKEND_URL}/api/technitium${path}`)
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) url.searchParams.set(key, String(value))
+  }
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: {
+        "X-Technitium-Base-Url": credentials.baseUrl,
+        "X-Technitium-Token": credentials.token,
+      },
+    })
+  } catch (err) {
+    throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new TechnitiumApiError(body?.error ?? `Request failed with status ${res.status}`, res.status)
+  }
+
+  const disposition = res.headers.get("content-disposition") ?? ""
+  const filenameMatch = /filename="?([^";]+)"?/.exec(disposition)
+  const filename = filenameMatch?.[1] ?? "export.csv"
+
+  return { blob: await res.blob(), filename }
+}
