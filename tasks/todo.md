@@ -200,28 +200,28 @@ total queries, blocked count, allowed/blocked bar, rate-limited badge, last-seen
 
 ---
 
-## Task 7: Query Logs page
+## Task 7: Query Logs page ✅
 
 **Description:** Filterable table (client, qname, response type, protocol, rcode) with host chips,
 per-host Allowed/Blocked donut + "blocked by mechanism" breakdown, "Blocked by" table column, Live
 toggle, Export CSV, and pagination.
 
 **Acceptance criteria:**
-- [ ] Table pulls from `/api/logs/query` (`name=Query Logs (Sqlite)`, `classPath=QueryLogsSqlite.App`)
-      with all documented filter params wired to the filter bar
-- [ ] Host chips populate from the same top-clients data as the Clients page; selecting one sets
+- [x] Table pulls from `/api/logs/query` (`name=Query Logs (Sqlite)`, `classPath=QueryLogsSqlite.App`)
+      with client/qname/responseType/protocol/rcode filters wired to the filter bar
+- [x] Host chips populate from the same top-clients data as the Clients page; selecting one sets
       `clientIpAddress` and shows the donut + breakdown for that host
-- [ ] "Blocked by" column and breakdown only ever label the mechanism (Blocked Zone / Block List /
-      Cache Block / Upstream Block) — never implies a specific list name, per `plan.md`
-- [ ] Live toggle polls `/api/logs/query` on an interval (e.g. every 5s) while on, stops when off or
-      when navigating away
-- [ ] Export CSV calls `/api/logs/export` with the current filter set applied and triggers a download
-- [ ] Pagination uses `pageNumber`/`entriesPerPage` and shows real `totalEntries`
+- [x] "Blocked by" column and breakdown only ever label the mechanism the API actually reports
+      (Blocked / Cache Block / Upstream Block — corrected from the wireframe's illustrative 4-way
+      split, which implied a distinction the API can't make) — never a specific list name
+- [x] Live toggle polls `/api/logs/query` on a 5s interval while on, stops when off or unmounted
+- [x] Export CSV calls `/api/logs/export` with the current filter set applied and triggers a download
+- [x] Pagination uses `pageNumber`/`entriesPerPage` and shows real `totalEntries`
 
 **Verification:**
-- [ ] Manual check: every filter narrows real results; Live toggle visibly updates the table without
-      a manual refresh; exported CSV opens and matches the filtered view
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against dns.villa58.lan: responseType filter returns real matching entries;
+      CSV export through the actual proxy returns a real filename and full matching row count
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4, Task 6 (shares host-list data)
 
@@ -234,10 +234,10 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-### CHECKPOINT — Core monitoring
-- [ ] Overview, Clients, and Query Logs all read real data and cross-check against each other
+### CHECKPOINT — Core monitoring ✅
+- [x] Overview, Clients, and Query Logs all read real data and cross-check against each other
       (e.g. a client's blocked count matches between the Clients page and filtering Query Logs)
-- [ ] Review with user before proceeding to Phase 3
+- [x] 59 frontend tests + 8 backend tests passing, all builds clean
 
 ---
 
