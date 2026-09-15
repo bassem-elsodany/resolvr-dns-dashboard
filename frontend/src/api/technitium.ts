@@ -402,9 +402,25 @@ export function getSettings(credentials: TechnitiumCredentials): Promise<Setting
 
 // ---------- DNS Client (resolver tool) ----------
 
+export interface DnsResolveRecord {
+  Name: string
+  Type: string
+  Class: string
+  TTL?: string
+  RDATA?: Record<string, unknown>
+  DnssecStatus?: string
+}
+
 export interface ResolveResult {
   response: {
-    result: Record<string, unknown>
+    result: {
+      Metadata: { NameServer: string; Protocol: string; DatagramSize: string; RoundTripTime: string }
+      RCODE: string
+      Question: { Name: string; Type: string; Class: string }[]
+      Answer: DnsResolveRecord[]
+      Authority: DnsResolveRecord[]
+      Additional: DnsResolveRecord[]
+    }
   }
 }
 
