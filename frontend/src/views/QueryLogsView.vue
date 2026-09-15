@@ -196,7 +196,7 @@ watch(
         <h1 class="text-lg font-semibold tracking-tight text-fg">Query Logs</h1>
         <p class="mt-1 text-sm text-gray-500">Every request answered by the resolver</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           id="live-toggle"
           type="button"

@@ -111,7 +111,7 @@ watch(
         <h1 class="text-lg font-semibold tracking-tight text-fg">Clients</h1>
         <p class="mt-1 text-sm text-gray-500">Every device that has queried this resolver</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <div class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background-hover p-0.5">
           <button
             v-for="range in ranges"
