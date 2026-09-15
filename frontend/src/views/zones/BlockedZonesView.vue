@@ -2,11 +2,14 @@
 import { ref, computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { updateBlockListUrls, AppApiError } from "../../api/app"
 import { triggerDownload } from "../../lib/download"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const auth = useAuthStore()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -40,6 +43,46 @@ async function loadBlockListConfig(): Promise<void> {
     blockListLines.value = toBlockListLines(res.response.blockListUrls ?? [])
   } catch (err) {
     configLoadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load block list sources."
+  }
+}
+
+// Admin editing — the raw list (comments and URLs, in order) is edited
+// as plain text, one entry per line, mirroring exactly what's stored:
+// Technitium doesn't distinguish them structurally, an admin's own "#
+// Some Label" line is just another string in the same array.
+const editingSources = ref(false)
+const editSourcesText = ref("")
+const savingSources = ref(false)
+const saveSourcesError = ref<string | null>(null)
+const sourcesSavedJustNow = ref(false)
+
+function startEditSources(): void {
+  editSourcesText.value = blockListLines.value.map((l) => l.text).join("\n")
+  saveSourcesError.value = null
+  sourcesSavedJustNow.value = false
+  editingSources.value = true
+}
+
+function cancelEditSources(): void {
+  editingSources.value = false
+}
+
+async function saveSources(): Promise<void> {
+  savingSources.value = true
+  saveSourcesError.value = null
+  try {
+    const urls = editSourcesText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    await updateBlockListUrls(urls)
+    await loadBlockListConfig()
+    editingSources.value = false
+    sourcesSavedJustNow.value = true
+  } catch (err) {
+    saveSourcesError.value = err instanceof AppApiError ? err.message : "Could not save block list sources."
+  } finally {
+    savingSources.value = false
   }
 }
 
@@ -128,7 +171,10 @@ watch(
     </p>
 
     <template v-else>
-      <div v-if="blockListLines.length > 0 || configLoadError" class="mb-4 rounded-lg border border-border bg-background-card p-3.5">
+      <div
+        v-if="blockListLines.length > 0 || configLoadError || auth.isAdmin"
+        class="mb-4 rounded-lg border border-border bg-background-card p-3.5"
+      >
         <div class="mb-2 flex flex-wrap items-center gap-2">
           <div class="text-[12.5px] font-semibold">Block list sources</div>
           <span
@@ -139,33 +185,76 @@ watch(
             {{ enableBlocking ? "Blocking enabled" : "Blocking disabled" }}
           </span>
           <span v-if="blockingType" class="text-[10.5px] text-gray-500">&middot; {{ blockingType }}</span>
+          <button
+            v-if="auth.isAdmin && !editingSources"
+            id="edit-block-list-sources"
+            type="button"
+            class="ml-auto text-[11.5px] font-semibold text-accent"
+            @click="startEditSources"
+          >
+            Edit
+          </button>
         </div>
         <p class="mb-2 text-[11px] text-gray-500">
-          The feeds this server downloads and merges into its block list zone &mdash; managed from the
-          Technitium web console's Settings &gt; Blocking section.
+          The feeds this server downloads and merges into its block list zone &mdash; one entry per
+          line; lines starting with <span class="font-mono">#</span> are your own group labels, not
+          sent to Technitium as feeds.
         </p>
-        <p v-if="configLoadError" id="block-list-sources-error" class="text-sm text-crit">{{ configLoadError }}</p>
-        <ul v-else id="block-list-sources" class="flex flex-col gap-0.5 text-[11.5px]">
-          <li
-            v-for="(line, i) in blockListLines"
-            :key="i"
-            :class="
-              line.kind === 'comment'
-                ? 'mt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 first:mt-0'
-                : 'truncate font-mono text-fg'
-            "
-          >
-            <a
-              v-if="line.kind === 'url'"
-              :href="line.text"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="hover:text-accent hover:underline"
-              >{{ line.text }}</a
+
+        <div v-if="editingSources" class="flex flex-col gap-2">
+          <textarea
+            id="block-list-sources-editor"
+            v-model="editSourcesText"
+            rows="10"
+            spellcheck="false"
+            class="w-full rounded-md border border-border bg-background-card px-2.5 py-2 font-mono text-[11.5px]"
+          />
+          <div class="flex items-center gap-2">
+            <button
+              id="save-block-list-sources"
+              type="button"
+              :disabled="savingSources"
+              class="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              @click="saveSources"
             >
-            <template v-else>{{ line.text.replace(/^#\s*/, "") }}</template>
-          </li>
-        </ul>
+              {{ savingSources ? "Saving…" : "Save" }}
+            </button>
+            <button type="button" class="text-xs text-gray-500" @click="cancelEditSources">Cancel</button>
+          </div>
+          <p v-if="saveSourcesError" id="block-list-sources-save-error" class="text-xs text-crit">
+            {{ saveSourcesError }}
+          </p>
+        </div>
+        <template v-else>
+          <p v-if="configLoadError" id="block-list-sources-error" class="text-sm text-crit">{{ configLoadError }}</p>
+          <p v-else-if="sourcesSavedJustNow" class="mb-1 text-[11px] text-ok">Saved.</p>
+          <ul
+            v-if="!configLoadError && blockListLines.length > 0"
+            id="block-list-sources"
+            class="flex flex-col gap-0.5 text-[11.5px]"
+          >
+            <li
+              v-for="(line, i) in blockListLines"
+              :key="i"
+              :class="
+                line.kind === 'comment'
+                  ? 'mt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 first:mt-0'
+                  : 'truncate font-mono text-fg'
+              "
+            >
+              <a
+                v-if="line.kind === 'url'"
+                :href="line.text"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hover:text-accent hover:underline"
+                >{{ line.text }}</a
+              >
+              <template v-else>{{ line.text.replace(/^#\s*/, "") }}</template>
+            </li>
+          </ul>
+          <p v-else-if="!configLoadError" class="text-[11.5px] text-gray-500">No block list feeds configured.</p>
+        </template>
       </div>
     </template>
 
