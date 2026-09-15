@@ -289,17 +289,19 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 10: Allowed Zones page
+## Task 10: Allowed Zones page ✅
 
 **Description:** List + filter + Export for `/api/allowed/list` / `/api/allowed/export`.
 
 **Acceptance criteria:**
-- [ ] List matches the server's allowed zones
-- [ ] Export button downloads the real export file
+- [x] List matches the server's allowed zones — including the tree-browser auto-descend case
+      (zones empty, records populated) discovered live and fixed with a fallback
+- [x] Export button downloads the real export file
 
 **Verification:**
-- [ ] Manual check against the live server (1 allowed zone currently)
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server (1 allowed zone currently) — real domain renders, real
+      AllowedZones.txt download with correct filename
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
