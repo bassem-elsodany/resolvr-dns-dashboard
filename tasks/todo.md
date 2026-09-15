@@ -464,21 +464,24 @@ the sidebar nav item.
 
 ---
 
-## Task 17: Alerts, loading & empty states
+## Task 17: Alerts, loading & empty states ✅
 
 **Description:** Consistent loading skeletons, error states (proxy unreachable, invalid token, app
 not installed on the server), and empty states across every page built in Tasks 5–16.
 
 **Acceptance criteria:**
-- [ ] Every data-fetching view has a loading, error, and empty state — none fall through to a blank
-      page or unhandled exception
-- [ ] "App not installed" state shows specifically on Query Logs (if Query Logs (Sqlite) app is
-      absent) and Cache/Zones as applicable, per the risk noted in `plan.md`
+- [x] Every data-fetching view has a loading, error, and empty state — audited all 12; fixed two real
+      gaps (ServerInfoView had no loading branch, CacheView's Browse button gave no in-flight feedback)
+- [x] "App not installed" state shows on Query Logs (if Query Logs (Sqlite) app is absent) — the only
+      page actually gated by an optional DNS app; Cache/Zones are core features with no such
+      dependency, so the original checklist wording was corrected after investigating
 
 **Verification:**
-- [ ] Manual check: disconnect network mid-session, use a bad token, and confirm each page degrades
-      gracefully
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: bad token and unreachable server both degrade gracefully with readable messages
+      — this surfaced a real bug (Technitium returns status:"invalid-token" with HTTP 200, not
+      "error"; the API client only checked for "error" and would have silently treated it as
+      success) — fixed and covered by a test using the real response shape
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Tasks 5-16
 
