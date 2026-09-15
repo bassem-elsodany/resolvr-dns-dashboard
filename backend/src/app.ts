@@ -7,6 +7,7 @@ import { attachUser, requireAuth, requireAdmin } from "./auth.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
 import { configRoutes, statusRoute } from "./routes/configRoutes.js";
+import { actionRoutes } from "./routes/actionRoutes.js";
 
 export interface CreateAppOptions {
   frontendOrigin?: string;
@@ -33,6 +34,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/users", requireAdmin, userRoutes(db));
   app.use("/api/config", requireAdmin, configRoutes(db, { fetchImpl }));
   app.get("/api/status", requireAuth, statusRoute(db, { fetchImpl }));
+  app.use("/api/actions", requireAdmin, actionRoutes(db, { fetchImpl }));
 
   app.all("/api/technitium/*splat", requireAuth, async (req: Request, res: Response) => {
     const config = db.prepare("SELECT base_url, token FROM app_config WHERE id = 1").get() as AppConfigRow;

@@ -98,3 +98,17 @@ export function deleteUser(id: number): Promise<{ status: string }> {
 export function changeUserPassword(id: number, password: string): Promise<{ status: string }> {
   return call(`/api/users/${id}/password`, { method: "PUT", body: JSON.stringify({ password }) })
 }
+
+// Admin-only mutating actions — the one deliberate exception to this
+// dashboard's read-only design (see backend/src/routes/actionRoutes.ts).
+export function flushCache(): Promise<{ status: string }> {
+  return call("/api/actions/flush-cache", { method: "POST" })
+}
+
+export function forceUpdateBlockLists(): Promise<{ status: string }> {
+  return call("/api/actions/update-block-lists", { method: "POST" })
+}
+
+export function revokeSession(partialToken: string): Promise<{ status: string }> {
+  return call("/api/actions/revoke-session", { method: "POST", body: JSON.stringify({ partialToken }) })
+}

@@ -8,10 +8,17 @@ vi.mock("../../api/technitium", async () => {
   return { ...actual, getDashboardStats: vi.fn(), getTopStats: vi.fn(), getSettings: vi.fn() }
 })
 
+vi.mock("../../api/app", async () => {
+  const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
+  return { ...actual, forceUpdateBlockLists: vi.fn() }
+})
+
 import { getDashboardStats, getTopStats, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import OverviewView from "./OverviewView.vue"
 
 const baseStats = {
@@ -68,6 +75,7 @@ describe("OverviewView", () => {
     localStorage.clear()
     setActivePinia(createPinia())
     vi.mocked(getDashboardStats).mockReset()
+    vi.mocked(forceUpdateBlockLists).mockReset()
     vi.mocked(getTopStats).mockReset()
     vi.mocked(getSettings).mockReset()
     vi.mocked(getTopStats).mockResolvedValue({ response: {} })
@@ -151,6 +159,66 @@ describe("OverviewView", () => {
 
     const errorEl = wrapper.find("#overview-error")
     expect(errorEl.text()).toBe("Invalid token or session expired.")
+  })
+
+  describe("block-list freshness admin action", () => {
+    function mockOverdueSettings() {
+      vi.mocked(getSettings).mockResolvedValue({
+        response: {
+          blockListNextUpdatedOn: new Date(Date.now() - 3600_000).toISOString(),
+          blockListUpdateIntervalHours: 24,
+        } as never,
+      })
+    }
+
+    it("shows an 'Update now' button for an admin when block lists are overdue", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      mockOverdueSettings()
+      const { wrapper } = await mountConnected()
+      await flushPromises()
+
+      expect(wrapper.find("#force-update-block-lists").exists()).toBe(true)
+    })
+
+    it("hides the 'Update now' button for a viewer, even when block lists are overdue", async () => {
+      useAuthStore().user = { id: 2, username: "reader", role: "viewer" }
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      mockOverdueSettings()
+      const { wrapper } = await mountConnected()
+      await flushPromises()
+
+      expect(wrapper.find("#force-update-block-lists").exists()).toBe(false)
+    })
+
+    it("triggers a block-list update and shows confirmation, without waiting for the scheduled interval", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      mockOverdueSettings()
+      vi.mocked(forceUpdateBlockLists).mockResolvedValue({ status: "ok" })
+      const { wrapper } = await mountConnected()
+      await flushPromises()
+
+      await wrapper.get("#force-update-block-lists").trigger("click")
+      await flushPromises()
+
+      expect(forceUpdateBlockLists).toHaveBeenCalled()
+      expect(wrapper.text()).toContain("Update triggered")
+    })
+
+    it("shows a readable error, not a raw stack trace, when triggering the update fails", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      mockOverdueSettings()
+      vi.mocked(forceUpdateBlockLists).mockRejectedValue(new AppApiError("Permission denied.", 502))
+      const { wrapper } = await mountConnected()
+      await flushPromises()
+
+      await wrapper.get("#force-update-block-lists").trigger("click")
+      await flushPromises()
+
+      expect(wrapper.find("#force-update-block-lists-error").text()).toBe("Permission denied.")
+    })
   })
 })
 
