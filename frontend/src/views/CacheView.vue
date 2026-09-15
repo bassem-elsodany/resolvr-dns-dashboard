@@ -60,9 +60,10 @@ async function browse(): Promise<void> {
         <button
           id="browse-cache"
           type="submit"
-          class="rounded-md bg-accent px-3.5 py-1.5 text-sm font-medium text-white"
+          :disabled="loading"
+          class="rounded-md bg-accent px-3.5 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          Browse
+          {{ loading ? "Browsing…" : "Browse" }}
         </button>
       </form>
 

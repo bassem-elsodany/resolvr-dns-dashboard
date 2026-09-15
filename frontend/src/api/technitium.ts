@@ -46,8 +46,12 @@ async function technitiumGet<T>(
   if (!res.ok) {
     throw new TechnitiumApiError(body?.error ?? `Request failed with status ${res.status}`, res.status)
   }
-  if (body?.status === "error") {
-    throw new TechnitiumApiError(body.errorMessage ?? "Technitium API returned an error", res.status)
+  // Technitium reports failures with HTTP 200 and a non-"ok" status —
+  // confirmed live: an invalid token returns status "invalid-token", not
+  // "error". Treat anything other than "ok" as a failure rather than
+  // enumerating specific failure strings, since more may exist.
+  if (body?.status && body.status !== "ok") {
+    throw new TechnitiumApiError(body.errorMessage ?? `Technitium API returned status: ${body.status}`, res.status)
   }
 
   return body as T

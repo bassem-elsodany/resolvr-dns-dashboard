@@ -4,11 +4,11 @@ import { createPinia, setActivePinia } from "pinia"
 
 vi.mock("../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../api/technitium")>("../api/technitium")
-  return { ...actual, getTopStats: vi.fn(), queryLogs: vi.fn(), exportLogs: vi.fn() }
+  return { ...actual, getTopStats: vi.fn(), queryLogs: vi.fn(), exportLogs: vi.fn(), listApps: vi.fn() }
 })
 vi.mock("../lib/download", () => ({ triggerDownload: vi.fn() }))
 
-import { getTopStats, queryLogs, exportLogs, TechnitiumApiError, type QueryLogEntry } from "../api/technitium"
+import { getTopStats, queryLogs, exportLogs, listApps, TechnitiumApiError, type QueryLogEntry } from "../api/technitium"
 import { triggerDownload } from "../lib/download"
 import { useConnectionStore } from "../stores/connection"
 import QueryLogsView from "./QueryLogsView.vue"
@@ -57,6 +57,11 @@ describe("QueryLogsView", () => {
     vi.mocked(queryLogs).mockReset().mockResolvedValue(logsResult())
     vi.mocked(exportLogs).mockReset()
     vi.mocked(triggerDownload).mockReset()
+    vi.mocked(listApps)
+      .mockReset()
+      .mockResolvedValue({
+        response: { apps: [{ name: "Query Logs (Sqlite)", description: "", version: "9.1.1", updateAvailable: false }] },
+      })
   })
 
   afterEach(() => {
@@ -162,5 +167,17 @@ describe("QueryLogsView", () => {
     const { wrapper } = await mountConnected()
 
     expect(wrapper.find("#logs-error").text()).toBe("Invalid token or session expired.")
+  })
+
+  it("shows a dedicated message instead of the table when the Query Logs app isn't installed", async () => {
+    vi.mocked(listApps).mockResolvedValue({
+      response: { apps: [{ name: "Advanced Blocking", description: "", version: "11.1", updateAvailable: false }] },
+    })
+
+    const { wrapper } = await mountConnected()
+
+    expect(wrapper.find("#query-logs-app-missing").exists()).toBe(true)
+    expect(wrapper.text()).toContain("Query Logs (Sqlite)")
+    expect(queryLogs).not.toHaveBeenCalled()
   })
 })

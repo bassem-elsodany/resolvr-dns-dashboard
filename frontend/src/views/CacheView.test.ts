@@ -73,4 +73,23 @@ describe("CacheView", () => {
 
     expect(wrapper.find("#cache-error").text()).toBe("Invalid domain name.")
   })
+
+  it("disables the Browse button and shows a loading label while the fetch is in flight", async () => {
+    let resolveFetch: (value: Awaited<ReturnType<typeof listCache>>) => void = () => {}
+    vi.mocked(listCache).mockReturnValue(new Promise((resolve) => (resolveFetch = resolve)))
+    const wrapper = await mountConnected()
+
+    await wrapper.get("#cache-domain").setValue("google.com")
+    await wrapper.get("form").trigger("submit")
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.get("#browse-cache")
+    expect(button.attributes("disabled")).toBeDefined()
+    expect(button.text()).toBe("Browsing…")
+
+    resolveFetch({ response: { domain: "google.com", zones: [], records: [] } })
+    await flushPromises()
+
+    expect(wrapper.get("#browse-cache").text()).toBe("Browse")
+  })
 })
