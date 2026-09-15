@@ -77,6 +77,79 @@ describe("QueryLogsView", () => {
     expect(wrapper.text()).toContain("Blocked")
   })
 
+  it("renders the RTT column — the wireframe's 10th table column, dropped in an earlier build", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(
+      logsResult({
+        totalEntries: 1,
+        entries: [{ ...sampleEntry, responseType: "Recursive", responseRtt: 135.86149999999998, answer: "1.2.3.4" }],
+      }),
+    )
+
+    const { wrapper } = await mountConnected()
+
+    const headers = wrapper.findAll("th").map((h) => h.text())
+    expect(headers).toEqual([
+      "Time",
+      "Client",
+      "Protocol",
+      "Response",
+      "Blocked by",
+      "RCODE",
+      "Query",
+      "Type",
+      "RTT",
+      "Answer",
+    ])
+    expect(wrapper.text()).toContain("135.9 ms")
+  })
+
+  it("shows a placeholder RTT for blocked entries, which never reach upstream", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 1, entries: [sampleEntry] }))
+
+    const { wrapper } = await mountConnected()
+
+    const lastRow = wrapper.findAll("tbody tr")[0]!
+    const cells = lastRow.findAll("td").map((c) => c.text())
+    expect(cells[cells.length - 2]).toBe("–") // RTT column, second-to-last
+  })
+
+  it("wraps host chips and the filter bar in one panel with a 'Filter by host' label, matching the wireframe", async () => {
+    vi.mocked(getTopStats).mockResolvedValue({
+      response: { topClients: [{ name: "10.0.10.30", hits: 500, rateLimited: false }] },
+    })
+
+    const { wrapper } = await mountConnected()
+
+    expect(wrapper.text()).toContain("Filter by host")
+    expect(wrapper.find(".host-chip").exists()).toBe(true)
+  })
+
+  it("includes the entry count in the page description once loaded, matching the wireframe", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 11497 }))
+
+    const { wrapper } = await mountConnected()
+
+    expect(wrapper.text()).toContain("sourced from the Query Logs (Sqlite) app")
+    expect(wrapper.text()).toContain("11,497 entries")
+  })
+
+  it("offers RCODE as a dropdown of real Technitium rcode values, not a free-text input", async () => {
+    const { wrapper } = await mountConnected()
+
+    const select = wrapper.get("#filter-rcode")
+    expect(select.element.tagName).toBe("SELECT")
+    const options = select.findAll("option").map((o) => o.attributes("value"))
+    expect(options).toEqual(["", "NoError", "NxDomain", "ServerFailure", "Refused"])
+  })
+
+  it("shows the wireframe's 'Showing X–Y of N' range text in the pagination footer", async () => {
+    vi.mocked(queryLogs).mockResolvedValue(logsResult({ totalEntries: 45, totalPages: 3, entries: [sampleEntry] }))
+
+    const { wrapper } = await mountConnected()
+
+    expect(wrapper.text()).toContain("Showing 1–20 of 45")
+  })
+
   it("resets to page 1 and refetches when a filter changes", async () => {
     const { wrapper } = await mountConnected()
     vi.mocked(queryLogs).mockClear()
