@@ -389,18 +389,18 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 14: Apps page
+## Task 14: Apps page ✅
 
 **Description:** Installed DNS apps list from `/api/apps/list` with name, version, update status.
 
 **Acceptance criteria:**
-- [ ] Cards match the live server's installed apps (Advanced Blocking, Query Logs (Sqlite), Block
+- [x] Cards match the live server's installed apps (Advanced Blocking, Query Logs (Sqlite), Block
       Page, DNS Rebinding Protection)
-- [ ] Update-available state reflects the real `updateAvailable` field
+- [x] Update-available state reflects the real `updateAvailable` field
 
 **Verification:**
-- [ ] Manual check against the live server
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server through the actual proxy — exact match, all 4 real apps
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
