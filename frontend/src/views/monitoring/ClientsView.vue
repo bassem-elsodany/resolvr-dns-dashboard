@@ -146,7 +146,15 @@ watch(
             <td colspan="7" class="px-3 py-6 text-center text-gray-500">No clients match.</td>
           </tr>
           <tr v-for="row in filteredClients" :key="row.ip" class="border-b border-border last:border-b-0">
-            <td class="px-3 py-2 font-mono">{{ row.ip }}</td>
+            <td class="px-3 py-2 font-mono">
+              <router-link
+                :to="{ path: '/logs', query: { client: row.ip } }"
+                title="View this client's query logs"
+                class="hover:text-accent hover:underline"
+              >
+                {{ row.ip }}
+              </router-link>
+            </td>
             <td class="px-3 py-2 text-gray-500">{{ row.hostname ?? "–" }}</td>
             <td class="px-3 py-2 text-right tabular-nums">{{ row.hits.toLocaleString() }}</td>
             <td class="px-3 py-2 text-right tabular-nums">{{ row.blocked.toLocaleString() }}</td>

@@ -54,6 +54,15 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("Connection Settings")
   })
 
+  it("renders an icon for every nav link, matching the wireframe's line icons", async () => {
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    const navLinkCount = navSections.flatMap((s) => s.items).length + 1 // +1 for Connection Settings
+    expect(wrapper.findAll("a svg").length).toBe(navLinkCount)
+  })
+
   it("highlights the active route's nav link", async () => {
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
