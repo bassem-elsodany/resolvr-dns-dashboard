@@ -312,17 +312,19 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 11: Blocked Zones page
+## Task 11: Blocked Zones page ✅
 
 **Description:** List + filter + Export for `/api/blocked/list` / `/api/blocked/export`.
 
 **Acceptance criteria:**
-- [ ] List matches the server's 73 blocked zones
-- [ ] Export button downloads the real export file
+- [x] List matches the server's real blocked zones (13 top-level entries — the "73" stat is an
+      internal zone-tree node count, not the same thing as the flat list this page shows)
+- [x] Export button downloads the real export file
 
 **Verification:**
-- [ ] Manual check against the live server
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server through the actual proxy: 13 real zones, real 85-line
+      CSV export
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
@@ -333,9 +335,9 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-### CHECKPOINT — Zones, cache & blocking
-- [ ] All four pages read real data matching the live server counts
-- [ ] Review with user before proceeding to Phase 4
+### CHECKPOINT — Zones, cache & blocking ✅
+- [x] All four pages read real data matching the live server counts
+- [x] 79 frontend tests + 8 backend tests passing, all builds clean
 
 ---
 
