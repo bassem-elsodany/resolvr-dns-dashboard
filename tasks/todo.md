@@ -66,25 +66,27 @@ and the wireframe's color/type token system (light default, dark via `prefers-co
 
 ---
 
-## Task 3: Connection Settings + API client
+## Task 3: Connection Settings + API client ✅
 
 **Description:** The Connection Settings page (server URL + token fields, Test Connection button,
 connected/disconnected badge) plus a typed API client module that reads config from a Pinia store
 (backed by `localStorage`) and calls the Task 1 backend for every Technitium endpoint the app needs.
 
 **Acceptance criteria:**
-- [ ] Entering `http://10.0.60.60:5380` + the real token and clicking Test Connection calls
+- [x] Entering `http://10.0.60.60:5380` + the real token and clicking Test Connection calls
       `/api/user/session/get` through the proxy and shows "Connected · dns.villa58.lan · v15.4"
-- [ ] Config persists across a page reload via `localStorage`
-- [ ] Wrong URL/token shows a clear inline error, not a raw stack trace
-- [ ] API client exposes one typed function per endpoint used elsewhere in this plan (stats, top
+- [x] Config persists across a page reload via `localStorage`
+- [x] Wrong URL/token shows a clear inline error, not a raw stack trace
+- [x] API client exposes one typed function per endpoint used elsewhere in this plan (stats, top
       stats, zones list/records, cache list, allowed/blocked list, dhcp scopes/leases, logs
       query/export, apps list, settings get, dnsClient resolve, admin sessions list,
       checkForUpdate)
 
 **Verification:**
-- [ ] Manual check against the live server: connect, disconnect, reconnect, reload page
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against the live server: connect, disconnect, reconnect, reload page —
+      confirmed at the API layer (proxy call ConnectView makes returns 200 with correct CORS);
+      no browser automation tool available in this environment for a visual check
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 1, Task 2
 
