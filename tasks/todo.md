@@ -363,19 +363,22 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 13: DNS Resolver tool
+## Task 13: DNS Resolver tool ✅
 
 **Description:** Ad-hoc query form (domain, type, protocol) that calls
 `/api/dnsClient/resolve?server=this-server` and renders the real answer.
 
 **Acceptance criteria:**
-- [ ] Resolving a real domain against the configured server returns and displays the actual answer,
+- [x] Resolving a real domain against the configured server returns and displays the actual answer,
       RTT, and response classification
-- [ ] Errors (NXDOMAIN, timeout) render clearly, not as a blank result
+- [x] Errors (NXDOMAIN, timeout) render clearly, not as a blank result — NXDOMAIN is a normal DNS
+      answer (RCODE badge + "No answer records"), distinct from a request-level failure
 
 **Verification:**
-- [ ] Manual check: resolve a domain live and compare against `dig`/the Technitium web console
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: resolved a real domain and a blocked domain live against dns.villa58.lan via
+      server=this-server — real nameserver/RTT/answers, and correct NxDomain/0-answers for the
+      blocked one
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
