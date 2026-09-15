@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useRefreshStore } from "../../stores/refresh"
 import {
   getTopStats,
   queryLogs,
@@ -17,6 +18,7 @@ import { formatRtt } from "../../lib/formatRtt"
 import HostInsightPanel from "../../components/logs/HostInsightPanel.vue"
 
 const connection = useConnectionStore()
+const refresh = useRefreshStore()
 
 const ENTRIES_PER_PAGE = 20
 
@@ -111,30 +113,45 @@ async function loadHostChips(): Promise<void> {
   }
 }
 
+// Reads the count from a settled logs/query call, treating a rejected
+// one as 0 rather than failing the whole panel. This matters in
+// practice: Technitium's own APIDOCS.md lists "CacheBlocked" as a valid
+// responseType filter value, but v15.4 rejects it live with "Requested
+// value 'CacheBlocked' was not found." — confirmed against the real
+// server. A single filter value one server version doesn't recognize
+// must not silently take down the entire host-insight feature.
+function countFrom(result: PromiseSettledResult<Awaited<ReturnType<typeof queryLogs>>>): number {
+  return result.status === "fulfilled" ? result.value.response.totalEntries : 0
+}
+
 async function loadHostInsight(entry: TopClientEntry): Promise<void> {
   const { start, end } = durationToRange("LastDay")
   const base = { clientIpAddress: entry.name, start, end, entriesPerPage: 1 }
-  const [totalRes, blockedRes, cacheRes, upstreamRes] = await Promise.all([
+  const [totalRes, blockedRes, cacheRes, upstreamRes] = await Promise.allSettled([
     queryLogs(connection.credentials, base),
     queryLogs(connection.credentials, { ...base, responseType: "Blocked" }),
     queryLogs(connection.credentials, { ...base, responseType: "CacheBlocked" }),
     queryLogs(connection.credentials, { ...base, responseType: "UpstreamBlocked" }),
   ])
+  const cacheBlocked = countFrom(cacheRes)
+  const upstreamBlocked = countFrom(upstreamRes)
   hostInsight.value = {
     ip: entry.name,
     hostname: entry.domain ?? null,
-    total: totalRes.response.totalEntries,
-    blocked:
-      blockedRes.response.totalEntries + cacheRes.response.totalEntries + upstreamRes.response.totalEntries,
-    cacheBlocked: cacheRes.response.totalEntries,
-    upstreamBlocked: upstreamRes.response.totalEntries,
+    total: countFrom(totalRes),
+    blocked: countFrom(blockedRes) + cacheBlocked + upstreamBlocked,
+    cacheBlocked,
+    upstreamBlocked,
   }
 }
 
 function selectHost(entry: TopClientEntry): void {
   filters.clientIpAddress = entry.name
   pageNumber.value = 1
-  void loadHostInsight(entry)
+  // loadHostInsight no longer rejects (see countFrom above), but a
+  // fire-and-forget call should never be able to produce an unhandled
+  // rejection regardless of what future changes do inside it.
+  loadHostInsight(entry).catch(() => {})
   void loadTable()
 }
 
@@ -192,6 +209,7 @@ watch(
     }
   },
 )
+watch(() => refresh.tick, loadTable)
 </script>
 
 <template>

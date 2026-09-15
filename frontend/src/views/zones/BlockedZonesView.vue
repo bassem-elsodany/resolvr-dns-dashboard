@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useRefreshStore } from "../../stores/refresh"
 import { listBlockedZones, exportBlockedZones, TechnitiumApiError } from "../../api/technitium"
 import { triggerDownload } from "../../lib/download"
 
 const connection = useConnectionStore()
+const refresh = useRefreshStore()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -46,6 +48,7 @@ async function onExport(): Promise<void> {
 }
 
 onMounted(load)
+watch(() => refresh.tick, load)
 watch(
   () => connection.isConfigured,
   (configured) => {

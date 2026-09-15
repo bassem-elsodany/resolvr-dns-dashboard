@@ -200,8 +200,9 @@ describe("QueryLogsView", () => {
       response: { topClients: [{ name: "10.0.10.30", domain: "studio.villa58.lan", hits: 500, rateLimited: false }] },
     })
     // selectHost() fires loadHostInsight()'s four queryLogs calls (total,
-    // Blocked, CacheBlocked, UpstreamBlocked, in that Promise.all order)
-    // before loadTable()'s refresh call — see selectHost() in the component.
+    // Blocked, CacheBlocked, UpstreamBlocked, in that Promise.allSettled
+    // order) before loadTable()'s refresh call — see selectHost() in the
+    // component.
     vi.mocked(queryLogs)
       .mockResolvedValueOnce(logsResult()) // initial table load (via the isConfigured watcher)
       .mockResolvedValueOnce(logsResult({ totalEntries: 800 })) // insight: total
@@ -218,6 +219,27 @@ describe("QueryLogsView", () => {
     expect(wrapper.text()).toContain("studio.villa58.lan")
     const clientFilterValue = (wrapper.get("#filter-client").element as HTMLInputElement).value
     expect(clientFilterValue).toBe("10.0.10.30")
+  })
+
+  it("still renders the host-insight panel when the server rejects the CacheBlocked filter (regression: Technitium v15.4 rejects it live with 'Requested value CacheBlocked was not found', which used to crash the whole panel via Promise.all)", async () => {
+    vi.mocked(getTopStats).mockResolvedValue({
+      response: { topClients: [{ name: "10.0.10.30", domain: "studio.villa58.lan", hits: 500, rateLimited: false }] },
+    })
+    vi.mocked(queryLogs)
+      .mockResolvedValueOnce(logsResult()) // initial table load
+      .mockResolvedValueOnce(logsResult({ totalEntries: 800 })) // insight: total
+      .mockResolvedValueOnce(logsResult({ totalEntries: 150 })) // insight: Blocked
+      .mockRejectedValueOnce(new TechnitiumApiError("Requested value 'CacheBlocked' was not found.", 200)) // insight: CacheBlocked — real server rejects this
+      .mockResolvedValueOnce(logsResult({ totalEntries: 5 })) // insight: UpstreamBlocked
+      .mockResolvedValueOnce(logsResult({ totalEntries: 800, entries: [sampleEntry] })) // table after host select
+
+    const { wrapper } = await mountConnected()
+    await wrapper.get(".host-chip").trigger("click")
+    await flushPromises()
+
+    expect(wrapper.find("#host-insight").exists()).toBe(true)
+    // 150 (Blocked) + 0 (CacheBlocked, failed) + 5 (UpstreamBlocked) = 155
+    expect(wrapper.text()).toContain("155")
   })
 
   it("exports the current filter set as a CSV download", async () => {

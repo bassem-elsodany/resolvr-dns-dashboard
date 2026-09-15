@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useRefreshStore } from "../../stores/refresh"
 import { listZones, getZoneRecords, TechnitiumApiError, type ZoneSummary, type ZoneRecord } from "../../api/technitium"
 import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
+const refresh = useRefreshStore()
 
 const ZONES_PER_PAGE = 15
 
@@ -86,6 +88,7 @@ function goToPage(delta: number): void {
 }
 
 onMounted(load)
+watch(() => refresh.tick, load)
 watch(
   () => connection.isConfigured,
   (configured) => {

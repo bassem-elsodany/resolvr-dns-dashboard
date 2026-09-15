@@ -1,22 +1,73 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { ref, watch, onMounted } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useThemeStore } from "../../stores/theme"
 import { useServerUpdateStore } from "../../stores/serverUpdate"
+import { useSidebarCountsStore } from "../../stores/sidebarCounts"
+import { useTimeRangeStore } from "../../stores/timeRange"
+import { useRefreshStore } from "../../stores/refresh"
+import type { StatsDuration } from "../../api/technitium"
 import { navSections } from "./navSections"
 
 const connection = useConnectionStore()
 const theme = useThemeStore()
 const serverUpdate = useServerUpdateStore()
+const sidebarCounts = useSidebarCountsStore()
+const timeRange = useTimeRangeStore()
+const refresh = useRefreshStore()
 const mobileOpen = ref(false)
+
+const ranges: { key: StatsDuration; label: string }[] = [
+  { key: "LastHour", label: "1H" },
+  { key: "LastDay", label: "24H" },
+  { key: "LastWeek", label: "7D" },
+  { key: "LastMonth", label: "30D" },
+  { key: "LastYear", label: "1Y" },
+]
 
 watch(
   () => connection.status,
   (status) => {
-    if (status === "connected") void serverUpdate.check(connection.credentials)
+    if (status === "connected") {
+      void serverUpdate.check(connection.credentials)
+      void sidebarCounts.load(connection.credentials)
+    }
   },
   { immediate: true },
 )
+
+// AppShell mounts once regardless of which route the app lands on
+// (unlike ConnectView, which only mounts when the user is actually on
+// /connect) — this is the one place that reliably re-validates a saved
+// connection on every load, so the sidebar's status dot doesn't get
+// stuck on "Not connected" just because the user landed on, say,
+// /logs directly. Confirmed live: navigating straight to /logs with a
+// valid saved token left the sidebar reading "Not connected" even
+// while the page streamed real data, because only ConnectView ever
+// called testConnection().
+onMounted(() => {
+  if (connection.isConfigured) void connection.testConnection()
+})
+
+// Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
+// Zones, Apps, Server Info). Returns null to hide the badge — e.g. no
+// rate-limited clients, or a count that failed to load.
+function navBadge(to: string): number | null {
+  switch (to) {
+    case "/clients":
+      return sidebarCounts.rateLimitedClients > 0 ? sidebarCounts.rateLimitedClients : null
+    case "/zones":
+      return sidebarCounts.zonesTotal
+    case "/blocked":
+      return sidebarCounts.blockedZonesTotal
+    case "/apps":
+      return sidebarCounts.appsTotal
+    case "/server":
+      return serverUpdate.updateAvailable ? 1 : null
+    default:
+      return null
+  }
+}
 </script>
 
 <template>
@@ -67,11 +118,14 @@ watch(
         >
           {{ item.label }}
           <span
-            v-if="item.to === '/server' && serverUpdate.updateAvailable"
-            id="server-update-badge"
-            class="ml-auto h-1.5 w-1.5 rounded-full bg-warn"
-            :title="serverUpdate.updateTitle ?? 'Update available'"
-          />
+            v-if="navBadge(item.to) !== null"
+            :id="item.to === '/server' ? 'server-update-badge' : undefined"
+            class="ml-auto text-[10.5px] font-bold tabular-nums"
+            :class="item.to === '/server' ? 'text-warn' : 'text-gray-500'"
+            :title="item.to === '/server' ? (serverUpdate.updateTitle ?? 'Update available') : undefined"
+          >
+            {{ navBadge(item.to) }}
+          </span>
         </router-link>
       </nav>
 
@@ -117,7 +171,30 @@ watch(
           </svg>
         </button>
 
-        <div class="ml-auto flex items-center gap-2">
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          <div id="topbar-range-seg" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background-hover p-0.5">
+            <button
+              v-for="range in ranges"
+              :key="range.key"
+              type="button"
+              class="rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-gray-500"
+              :class="timeRange.selected === range.key ? 'bg-background-card text-fg shadow-sm' : ''"
+              @click="timeRange.set(range.key)"
+            >
+              {{ range.label }}
+            </button>
+          </div>
+          <button
+            id="topbar-refresh"
+            type="button"
+            title="Refresh now"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-gray-500 hover:bg-background-hover hover:text-fg"
+            @click="refresh.trigger()"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M20 11A8 8 0 1 0 18.7 16M20 5v6h-6" />
+            </svg>
+          </button>
           <button
             id="theme-toggle"
             type="button"

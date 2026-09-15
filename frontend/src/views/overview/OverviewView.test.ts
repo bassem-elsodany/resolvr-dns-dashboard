@@ -10,6 +10,8 @@ vi.mock("../../api/technitium", async () => {
 
 import { getDashboardStats, getTopStats, getSettings, TechnitiumApiError } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
+import { useTimeRangeStore } from "../../stores/timeRange"
+import { useRefreshStore } from "../../stores/refresh"
 import OverviewView from "./OverviewView.vue"
 
 const baseStats = {
@@ -92,13 +94,14 @@ describe("OverviewView", () => {
     expect(wrapper.text()).toContain("sessions.bugsnag.com")
   })
 
-  it("refetches stats when the time range changes", async () => {
+  it("refetches stats when the shared time-range store changes (the control now lives in AppShell's topbar, not this page)", async () => {
     vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
     const { wrapper } = await mountConnected()
     await flushPromises()
     vi.mocked(getDashboardStats).mockClear()
 
-    await wrapper.get("#range-seg").findAll("button")[2]!.trigger("click") // 7D
+    useTimeRangeStore().set("LastWeek")
+    await wrapper.vm.$nextTick()
     await flushPromises()
 
     expect(getDashboardStats).toHaveBeenCalledWith(
@@ -106,6 +109,19 @@ describe("OverviewView", () => {
       expect.anything(),
       expect.objectContaining({ utc: true }),
     )
+  })
+
+  it("refetches stats when the shared refresh store's tick changes (the topbar refresh button)", async () => {
+    vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+    vi.mocked(getDashboardStats).mockClear()
+
+    useRefreshStore().trigger()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(getDashboardStats).toHaveBeenCalledTimes(1)
   })
 
   it("shows the rate-limited banner only when the API reports a rate-limited client", async () => {
