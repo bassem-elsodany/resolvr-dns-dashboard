@@ -6,25 +6,25 @@ throughout: `dns.villa58.lan` (10.0.60.60:5380, v15.4).
 
 ---
 
-## Task 1: Backend proxy service
+## Task 1: Backend proxy service ✅
 
 **Description:** A minimal Node/Express (TypeScript) server that relays an explicit allowlist of
 Technitium read endpoints to `{serverUrl}` using headers the frontend sends per-request, and adds
 CORS for the frontend's dev/prod origin. No database, no config file — fully stateless.
 
 **Acceptance criteria:**
-- [ ] `POST/GET /api/proxy/*` (or similar) forwards only to paths in a hardcoded allowlist covering
+- [x] `GET/ALL /api/technitium/*splat` forwards only to paths in a hardcoded allowlist covering
       every endpoint listed in Tasks 5–16; any other path returns 403
-- [ ] Requires `X-Technitium-Base-Url` and `X-Technitium-Token` headers on every call; missing
+- [x] Requires `X-Technitium-Base-Url` and `X-Technitium-Token` headers on every call; missing
       either returns 400
-- [ ] Forwards Technitium's JSON response and status code back unchanged (pass-through, not reshaped)
-- [ ] CORS configured for the frontend origin only (not `*`)
+- [x] Forwards Technitium's JSON response and status code back unchanged (pass-through, not reshaped)
+- [x] CORS configured for the frontend origin only (not `*`)
 
 **Verification:**
-- [ ] `curl` through the proxy to `dashboard/stats/get` returns the same JSON shape as calling
+- [x] `curl` through the proxy to `dashboard/stats/get` returns the same JSON shape as calling
       Technitium directly
-- [ ] `curl` through the proxy to an unlisted path (e.g. `/api/zones/delete`) returns 403
-- [ ] Build succeeds: `npm run build` in `backend/`
+- [x] `curl` through the proxy to an unlisted path (e.g. `/api/zones/delete`) returns 403
+- [x] Build succeeds: `npm run build` in `backend/`
 
 **Dependencies:** None
 
