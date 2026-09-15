@@ -241,19 +241,19 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 8: Cache page
+## Task 8: Cache page ✅
 
 **Description:** Domain input + Browse button showing cached records for that domain via
 `/api/cache/list`.
 
 **Acceptance criteria:**
-- [ ] Entering a real cached domain (e.g. one seen in Query Logs) returns its actual cached records
+- [x] Entering a real cached domain (e.g. one seen in Query Logs) returns its actual cached records
       with TTL remaining
-- [ ] Empty/unknown domain shows a clear "nothing cached" state, not an error
+- [x] Empty/unknown domain shows a clear "nothing cached" state, not an error
 
 **Verification:**
-- [ ] Manual check against a live domain known to be in cache
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check against a live domain known to be in cache (pool.ntp.org) and an invented one
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
