@@ -409,6 +409,13 @@ export interface DnsSettings {
   defaultSoaRecordTtl: number
   qpmPrefixLimitsIPv4: { prefix: number; udpLimit: number; tcpLimit: number }[]
   qpmLimitSampleMinutes: number
+  enableBlocking?: boolean
+  blockingType?: string
+  blockingBypassList?: string[]
+  blockListUrls?: string[]
+  allowListUrls?: string[]
+  regexBlockListUrls?: string[]
+  regexAllowListUrls?: string[]
   blockListNextUpdatedOn?: string
   blockListUpdateIntervalHours?: number
 }
