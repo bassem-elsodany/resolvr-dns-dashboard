@@ -4,7 +4,7 @@ import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import { useAuthStore } from "../../stores/auth"
 import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
-import { updateBlockListUrls, AppApiError } from "../../api/app"
+import { updateBlockListUrls, blockDomain, unblockDomain, AppApiError } from "../../api/app"
 import { triggerDownload } from "../../lib/download"
 import ZoneTreeNode from "../../components/zones/ZoneTreeNode.vue"
 
@@ -117,6 +117,31 @@ function fetchNode(domain: string) {
   return listBlockedZones(connection.credentials, domain)
 }
 
+// Passed to the tree's admin-only Remove control — kept undefined for
+// a viewer so ZoneTreeNode never renders the control at all, rather
+// than rendering-then-hiding it.
+const deleteDomain = computed(() => (auth.isAdmin ? unblockDomain : undefined))
+
+const newDomain = ref("")
+const addingDomain = ref(false)
+const addDomainError = ref<string | null>(null)
+
+async function onAddDomain(): Promise<void> {
+  const domain = newDomain.value.trim()
+  if (!domain) return
+  addingDomain.value = true
+  addDomainError.value = null
+  try {
+    await blockDomain(domain)
+    newDomain.value = ""
+    await load() // a brand new root label (e.g. a TLD never blocked before) needs to appear
+  } catch (err) {
+    addDomainError.value = err instanceof AppApiError ? err.message : "Could not block this domain."
+  } finally {
+    addingDomain.value = false
+  }
+}
+
 async function onExport(): Promise<void> {
   try {
     triggerDownload(await exportBlockedZones(connection.credentials))
@@ -152,6 +177,22 @@ watch(
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <form v-if="auth.isAdmin" class="flex items-center gap-1.5" @submit.prevent="onAddDomain">
+          <input
+            id="new-blocked-domain"
+            v-model="newDomain"
+            placeholder="example.com"
+            class="w-40 rounded-md border border-border bg-background-card px-2.5 py-1.5 font-mono text-xs"
+          />
+          <button
+            id="add-blocked-domain"
+            type="submit"
+            :disabled="addingDomain"
+            class="rounded-md bg-accent px-2.5 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-50"
+          >
+            {{ addingDomain ? "Blocking…" : "Block domain" }}
+          </button>
+        </form>
         <input
           id="blocked-filter"
           v-model="filterText"
@@ -168,6 +209,7 @@ watch(
         </button>
       </div>
     </div>
+    <p v-if="addDomainError" id="add-blocked-domain-error" class="mb-3 text-sm text-crit">{{ addDomainError }}</p>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">
       Connect to a Technitium server on the
@@ -275,7 +317,14 @@ watch(
         {{ loading ? "Loading…" : "No blocked zones." }}
       </p>
       <ul v-else id="blocked-zone-tree">
-        <ZoneTreeNode v-for="domain in filteredDomains" :key="domain" :domain="domain" :depth="0" :fetch-node="fetchNode" />
+        <ZoneTreeNode
+          v-for="domain in filteredDomains"
+          :key="domain"
+          :domain="domain"
+          :depth="0"
+          :fetch-node="fetchNode"
+          :delete-domain="deleteDomain"
+        />
       </ul>
     </div>
   </div>
