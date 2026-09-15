@@ -63,7 +63,7 @@ watch(
         <h1 class="text-lg font-semibold tracking-tight text-fg">Allowed Zones</h1>
         <p class="mt-1 text-sm text-gray-500">Domains explicitly exempted from blocking</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <input
           id="allowed-filter"
           v-model="filterText"
