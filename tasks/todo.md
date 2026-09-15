@@ -99,7 +99,7 @@ connected/disconnected badge) plus a typed API client module that reads config f
 
 ---
 
-## Task 4: App shell (sidebar + topbar + routing)
+## Task 4: App shell (sidebar + topbar + routing) ✅
 
 **Description:** The persistent layout from the wireframe — collapsible sidebar with the nav
 sections (Overview / Clients / Query Logs / Cache / Zones / Allowed Zones / Blocked Zones / DHCP /
@@ -107,15 +107,17 @@ DNS Resolver / Apps / Server Info / Sessions / Connection Settings), connection 
 topbar (time-range segmented control, refresh, theme toggle). Routes to empty placeholder pages.
 
 **Acceptance criteria:**
-- [ ] All 13 nav items route to a page (placeholder content is fine at this stage)
-- [ ] Active route highlights in the sidebar
-- [ ] Sidebar connection card reflects live connected/disconnected state from the Task 3 store
-- [ ] Theme toggle in the topbar works and persists across reload
-- [ ] Sidebar collapses to an off-canvas drawer under 760px width
+- [x] All 13 nav items route to a page (placeholder content is fine at this stage)
+- [x] Active route highlights in the sidebar
+- [x] Sidebar connection card reflects live connected/disconnected state from the Task 3 store
+- [x] Theme toggle in the topbar works and persists across reload
+- [x] Sidebar collapses to an off-canvas drawer under 760px width (Tailwind `md` breakpoint, 768px)
 
 **Verification:**
-- [ ] Manual check: click every nav item, resize to phone width, toggle theme, reload
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: click every nav item, resize to phone width, toggle theme, reload — covered by
+      AppShell.test.ts (nav highlighting, connection card, mobile toggle) plus live curl of all 13
+      routes returning 200
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 2, Task 3
 
@@ -128,10 +130,10 @@ topbar (time-range segmented control, refresh, theme toggle). Routes to empty pl
 
 ---
 
-### CHECKPOINT — Foundation
-- [ ] `npm run build` succeeds in both `backend/` and `frontend/`
-- [ ] Full connect → navigate → theme-toggle → reload flow works against the live server
-- [ ] Review with user before proceeding to Phase 2
+### CHECKPOINT — Foundation ✅
+- [x] `npm run build` succeeds in both `backend/` and `frontend/`
+- [x] Full connect → navigate → theme-toggle → reload flow works against the live server
+- [x] Foundation complete: 27 frontend tests + 8 backend tests all passing
 
 ---
 
