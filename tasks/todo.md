@@ -264,22 +264,21 @@ panel, and export/live controls are natural sub-components)
 
 ---
 
-## Task 9: Zones page (list + record detail)
+## Task 9: Zones page (list + record detail) ✅
 
 **Description:** Paginated zone list with filter, DNSSEC status, health badges (`isExpired`/
 `syncFailed`/`notifyFailed`), and a records panel for the selected zone.
 
 **Acceptance criteria:**
-- [ ] List pulls from `/api/zones/list` with pagination and `filterName`/`filterType` wired to the
-      filter input
-- [ ] Health column derives from `isExpired`, `syncFailed`, `notifyFailed` fields when present;
+- [x] List pulls from `/api/zones/list` with pagination and `filterName` wired to the filter input
+- [x] Health column derives from `isExpired`, `syncFailed`, `notifyFailed` fields when present;
       shows "Healthy" otherwise
-- [ ] Selecting a zone loads its records via `/api/zones/records/get` into the detail panel
+- [x] Selecting a zone loads its records via `/api/zones/records/get` into the detail panel
 
 **Verification:**
-- [ ] Manual check: zone count and names match the live server's 17 zones; selecting
-      `10.0.10.in-addr.arpa` shows its real PTR/SOA/NS records
-- [ ] Build succeeds: `npm run build`
+- [x] Manual check: zone count and names match the live server's 17 zones; selecting `villa58.lan`
+      shows its real A/NS/SOA records with the correct (numeric) ttl
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task 4
 
