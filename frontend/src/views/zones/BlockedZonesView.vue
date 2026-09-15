@@ -6,6 +6,7 @@ import { useAuthStore } from "../../stores/auth"
 import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
 import { updateBlockListUrls, AppApiError } from "../../api/app"
 import { triggerDownload } from "../../lib/download"
+import ZoneTreeNode from "../../components/zones/ZoneTreeNode.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
@@ -110,6 +111,10 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function fetchNode(domain: string) {
+  return listBlockedZones(connection.credentials, domain)
 }
 
 async function onExport(): Promise<void> {
@@ -260,24 +265,18 @@ watch(
 
     <p v-if="loadError" id="blocked-error" class="text-sm text-crit">{{ loadError }}</p>
 
-    <div v-if="connection.isConfigured && !loadError" class="overflow-x-auto rounded-lg border border-border">
-      <table class="w-full text-left text-[12.5px]">
-        <thead>
-          <tr class="border-b border-border bg-background-elevated text-[10.5px] uppercase text-gray-500">
-            <th class="px-3 py-2 font-bold">Domain</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="filteredDomains.length === 0">
-            <td class="px-3 py-6 text-center text-gray-500">
-              {{ loading ? "Loading…" : "No blocked zones." }}
-            </td>
-          </tr>
-          <tr v-for="domain in filteredDomains" :key="domain" class="border-b border-border last:border-b-0">
-            <td class="px-3 py-2 font-mono">{{ domain }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-if="connection.isConfigured && !loadError" class="rounded-lg border border-border bg-background-card p-2">
+      <p class="px-1.5 pb-1.5 pt-1 text-[11px] text-gray-500">
+        Click a domain to expand it &mdash; each one may hold further blocked subdomains underneath.
+        <span class="rounded-md bg-crit/12 px-1.5 py-0.5 text-[10px] font-semibold text-crit">Blocked</span>
+        marks a domain that's actually denied, not just a grouping label.
+      </p>
+      <p v-if="filteredDomains.length === 0" class="px-1.5 py-4 text-center text-sm text-gray-500">
+        {{ loading ? "Loading…" : "No blocked zones." }}
+      </p>
+      <ul v-else id="blocked-zone-tree">
+        <ZoneTreeNode v-for="domain in filteredDomains" :key="domain" :domain="domain" :depth="0" :fetch-node="fetchNode" />
+      </ul>
     </div>
   </div>
 </template>
