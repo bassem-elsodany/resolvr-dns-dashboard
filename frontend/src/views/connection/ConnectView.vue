@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 
 const connection = useConnectionStore()
@@ -11,11 +11,10 @@ async function onTestConnection() {
   await connection.testConnection()
 }
 
-// Re-validate a previously saved connection on load, so a reload shows
-// "Connected" again instead of resetting to idle until the user re-tests.
-onMounted(() => {
-  if (connection.isConfigured) void connection.testConnection()
-})
+// AppShell.vue re-validates a previously saved connection on mount
+// (it's always mounted, unlike this view) — no need to duplicate that
+// here, which would just double the request when the user is actually
+// on this page.
 </script>
 
 <template>

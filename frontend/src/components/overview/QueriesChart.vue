@@ -8,12 +8,20 @@ const W = 640
 const H = 200
 const PAD = 8
 
+// mainChartData actually carries 11 series (Total, No Error, Server
+// Failure, NX Domain, Refused, Authoritative, Recursive, Cached,
+// Blocked, Dropped, Clients — confirmed live) — the approved wireframe
+// intentionally scoped this chart to 3 (Total / No Error / Blocked),
+// matching its "Queries over time" subtitle. Rendering all 11 produced
+// a cluttered chart nobody approved; filter back down to those 3.
+const WIREFRAME_SERIES = ["Total", "No Error", "Blocked"]
+
 // Technitium's API already assigns each dataset a color (mainChartData
 // datasets carry their own borderColor/backgroundColor) — reuse those
 // instead of hardcoding a palette, so the chart stays correct if the
 // server ever adds or reorders series.
 const paths = computed(() => {
-  const datasets = props.chart.datasets
+  const datasets = props.chart.datasets.filter((d) => WIREFRAME_SERIES.includes(d.label))
   const allValues = datasets.flatMap((d) => d.data)
   const max = Math.max(1, ...allValues) * 1.1
   const n = props.chart.labels.length || 1
@@ -37,7 +45,7 @@ const paths = computed(() => {
 
 <template>
   <div>
-    <div v-if="chart.datasets.length === 0" class="py-10 text-center text-sm text-gray-500">
+    <div v-if="paths.length === 0" class="py-10 text-center text-sm text-gray-500">
       No query data for this time range yet.
     </div>
     <template v-else>

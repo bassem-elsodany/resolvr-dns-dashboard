@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useTimeRangeStore } from "../../stores/timeRange"
+import { useRefreshStore } from "../../stores/refresh"
 import {
   getDashboardStats,
   getTopStats,
   getSettings,
   TechnitiumApiError,
-  type StatsDuration,
   type DashboardStatsResult,
   type TopClientEntry,
 } from "../../api/technitium"
@@ -15,15 +16,11 @@ import QueriesChart from "../../components/overview/QueriesChart.vue"
 import TopList from "../../components/overview/TopList.vue"
 
 const connection = useConnectionStore()
-
-const ranges: { key: StatsDuration; label: string }[] = [
-  { key: "LastHour", label: "1H" },
-  { key: "LastDay", label: "24H" },
-  { key: "LastWeek", label: "7D" },
-  { key: "LastMonth", label: "30D" },
-  { key: "LastYear", label: "1Y" },
-]
-const selectedRange = ref<StatsDuration>("LastHour")
+// Time range is a single global control in the topbar (AppShell.vue),
+// not a per-page copy — the wireframe puts it there once and Overview
+// and Clients both read the same selection.
+const timeRange = useTimeRangeStore()
+const refresh = useRefreshStore()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -61,8 +58,8 @@ async function load(): Promise<void> {
   loadError.value = null
   try {
     const [statsRes, rateLimitedRes, settingsRes] = await Promise.all([
-      getDashboardStats(selectedRange.value, connection.credentials, { utc: true }),
-      getTopStats("TopClients", selectedRange.value, connection.credentials, {
+      getDashboardStats(timeRange.selected, connection.credentials, { utc: true }),
+      getTopStats("TopClients", timeRange.selected, connection.credentials, {
         onlyRateLimitedClients: true,
         limit: 1,
       }),
@@ -79,7 +76,8 @@ async function load(): Promise<void> {
 }
 
 onMounted(load)
-watch(selectedRange, load)
+watch(() => timeRange.selected, load)
+watch(() => refresh.tick, load)
 // Reload once the connection becomes configured after this page has
 // already mounted (e.g. the user lands here before ever visiting
 // Connection Settings) — onMounted alone would only cover the case
@@ -94,25 +92,11 @@ watch(
 
 <template>
   <div>
-    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="text-lg font-semibold tracking-tight text-fg">Overview</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          Live resolver activity<span v-if="connection.serverDomain"> for {{ connection.serverDomain }}</span>
-        </p>
-      </div>
-      <div id="range-seg" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background-hover p-0.5">
-        <button
-          v-for="range in ranges"
-          :key="range.key"
-          type="button"
-          class="rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-gray-500"
-          :class="selectedRange === range.key ? 'bg-background-card text-fg shadow-sm' : ''"
-          @click="selectedRange = range.key"
-        >
-          {{ range.label }}
-        </button>
-      </div>
+    <div class="mb-5">
+      <h1 class="text-lg font-semibold tracking-tight text-fg">Overview</h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Live resolver activity<span v-if="connection.serverDomain"> for {{ connection.serverDomain }}</span>
+      </p>
     </div>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">

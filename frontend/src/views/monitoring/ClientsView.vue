@@ -1,19 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
-import { getTopStats, queryLogs, TechnitiumApiError, type StatsDuration } from "../../api/technitium"
+import { useTimeRangeStore } from "../../stores/timeRange"
+import { useRefreshStore } from "../../stores/refresh"
+import { getTopStats, queryLogs, TechnitiumApiError } from "../../api/technitium"
 import { durationToRange } from "../../lib/dateRange"
 
 const connection = useConnectionStore()
-
-const ranges: { key: StatsDuration; label: string }[] = [
-  { key: "LastHour", label: "1H" },
-  { key: "LastDay", label: "24H" },
-  { key: "LastWeek", label: "7D" },
-  { key: "LastMonth", label: "30D" },
-  { key: "LastYear", label: "1Y" },
-]
-const selectedRange = ref<StatsDuration>("LastDay")
+// Time range is the single global control in AppShell's topbar — see
+// OverviewView.vue for the same pattern.
+const timeRange = useTimeRangeStore()
+const refresh = useRefreshStore()
 const filterText = ref("")
 
 interface ClientRow {
@@ -42,9 +39,9 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const top = await getTopStats("TopClients", selectedRange.value, connection.credentials, { limit: 15 })
+    const top = await getTopStats("TopClients", timeRange.selected, connection.credentials, { limit: 15 })
     const entries = top.response.topClients ?? []
-    const { start, end } = durationToRange(selectedRange.value)
+    const { start, end } = durationToRange(timeRange.selected)
 
     clients.value = await Promise.all(
       entries.map(async (entry) => {
@@ -95,7 +92,8 @@ function formatLastSeen(iso: string | null): string {
 }
 
 onMounted(load)
-watch(selectedRange, load)
+watch(() => timeRange.selected, load)
+watch(() => refresh.tick, load)
 watch(
   () => connection.isConfigured,
   (configured) => {
@@ -112,18 +110,6 @@ watch(
         <p class="mt-1 text-sm text-gray-500">Every device that has queried this resolver</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <div class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background-hover p-0.5">
-          <button
-            v-for="range in ranges"
-            :key="range.key"
-            type="button"
-            class="rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-gray-500"
-            :class="selectedRange === range.key ? 'bg-background-card text-fg shadow-sm' : ''"
-            @click="selectedRange = range.key"
-          >
-            {{ range.label }}
-          </button>
-        </div>
         <input
           id="client-filter"
           v-model="filterText"

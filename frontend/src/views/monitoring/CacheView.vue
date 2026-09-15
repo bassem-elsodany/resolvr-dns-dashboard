@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useRefreshStore } from "../../stores/refresh"
 import { listCache, TechnitiumApiError, type ZoneRecord } from "../../api/technitium"
 import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
+const refresh = useRefreshStore()
 
 const domainInput = ref("")
 const searchedDomain = ref<string | null>(null)
@@ -31,6 +33,18 @@ async function browse(): Promise<void> {
     loading.value = false
   }
 }
+
+// The topbar refresh button re-browses whatever domain is currently
+// shown (not whatever's been typed but not submitted) — there's
+// nothing to refresh before a first search.
+watch(
+  () => refresh.tick,
+  () => {
+    if (!searchedDomain.value) return
+    domainInput.value = searchedDomain.value
+    void browse()
+  },
+)
 </script>
 
 <template>

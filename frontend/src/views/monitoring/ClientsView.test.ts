@@ -9,6 +9,8 @@ vi.mock("../../api/technitium", async () => {
 
 import { getTopStats, queryLogs, TechnitiumApiError } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
+import { useTimeRangeStore } from "../../stores/timeRange"
+import { useRefreshStore } from "../../stores/refresh"
 import ClientsView from "./ClientsView.vue"
 
 function flushPromises() {
@@ -126,5 +128,33 @@ describe("ClientsView", () => {
     await flushPromises()
 
     expect(wrapper.find("#clients-error").text()).toBe("Invalid token or session expired.")
+  })
+
+  it("refetches when the shared time-range store changes (the control now lives in AppShell's topbar)", async () => {
+    vi.mocked(getTopStats).mockResolvedValue({ response: { topClients: [] } })
+    vi.mocked(queryLogs).mockResolvedValue({ response: { pageNumber: 1, totalPages: 1, totalEntries: 0, entries: [] } })
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+    vi.mocked(getTopStats).mockClear()
+
+    useTimeRangeStore().set("LastWeek")
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(getTopStats).toHaveBeenCalledWith("TopClients", "LastWeek", expect.anything(), expect.anything())
+  })
+
+  it("refetches when the shared refresh store's tick changes (the topbar refresh button)", async () => {
+    vi.mocked(getTopStats).mockResolvedValue({ response: { topClients: [] } })
+    vi.mocked(queryLogs).mockResolvedValue({ response: { pageNumber: 1, totalPages: 1, totalEntries: 0, entries: [] } })
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+    vi.mocked(getTopStats).mockClear()
+
+    useRefreshStore().trigger()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(getTopStats).toHaveBeenCalledTimes(1)
   })
 })

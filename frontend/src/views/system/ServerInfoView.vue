@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
+import { useRefreshStore } from "../../stores/refresh"
 import { useServerUpdateStore } from "../../stores/serverUpdate"
 import { getSettings, TechnitiumApiError, type DnsSettings } from "../../api/technitium"
 
 const connection = useConnectionStore()
+const refresh = useRefreshStore()
 const serverUpdate = useServerUpdateStore()
 
 const loading = ref(false)
@@ -26,6 +28,7 @@ async function load(): Promise<void> {
 }
 
 onMounted(load)
+watch(() => refresh.tick, load)
 watch(
   () => connection.isConfigured,
   (configured) => {
