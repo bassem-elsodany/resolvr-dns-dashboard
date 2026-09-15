@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, watch } from "vue"
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import {
   getTopStats,
@@ -13,6 +13,7 @@ import {
 import { durationToRange } from "../../lib/dateRange"
 import { blockedByLabel } from "../../lib/blockMechanism"
 import { triggerDownload } from "../../lib/download"
+import { formatRtt } from "../../lib/formatRtt"
 import HostInsightPanel from "../../components/logs/HostInsightPanel.vue"
 
 const connection = useConnectionStore()
@@ -48,6 +49,10 @@ const hostInsight = ref<{
 
 const liveOn = ref(false)
 let liveTimer: ReturnType<typeof setInterval> | null = null
+
+// Matches the wireframe's "Showing 1–10 of N" footer wording.
+const rangeStart = computed(() => (totalEntries.value === 0 ? 0 : (pageNumber.value - 1) * ENTRIES_PER_PAGE + 1))
+const rangeEnd = computed(() => Math.min(pageNumber.value * ENTRIES_PER_PAGE, totalEntries.value))
 
 function activeFilters() {
   const f: Record<string, string> = {}
@@ -194,7 +199,13 @@ watch(
     <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-lg font-semibold tracking-tight text-fg">Query Logs</h1>
-        <p class="mt-1 text-sm text-gray-500">Every request answered by the resolver</p>
+        <p class="mt-1 text-sm text-gray-500">
+          Every request answered by the resolver &middot; sourced from the Query Logs (Sqlite) app<span
+            v-if="totalEntries > 0"
+          >
+            &middot; {{ totalEntries.toLocaleString() }} entries</span
+          >
+        </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button
@@ -231,29 +242,90 @@ watch(
     </div>
 
     <template v-else>
-      <div v-if="hostChips.length > 0" class="mb-4 flex flex-wrap gap-2">
-        <button
-          v-for="chip in hostChips"
-          :key="chip.name"
-          type="button"
-          class="host-chip rounded-full border px-2.5 py-1 text-[11.5px]"
-          :class="
-            filters.clientIpAddress === chip.name
-              ? 'border-accent bg-accent/10 font-semibold text-accent'
-              : 'border-border text-gray-500'
-          "
-          @click="selectHost(chip)"
-        >
-          <span class="font-mono">{{ chip.name }}</span>
-        </button>
-        <button
-          v-if="filters.clientIpAddress"
-          type="button"
-          class="rounded-full border border-border px-2.5 py-1 text-[11.5px] text-gray-500"
-          @click="clearHost"
-        >
-          All hosts
-        </button>
+      <div class="mb-4 rounded-lg border border-border bg-background-card p-3.5">
+        <div v-if="hostChips.length > 0" class="mb-3">
+          <label class="mb-1 block text-[11px] font-semibold text-gray-500">Filter by host</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="chip in hostChips"
+              :key="chip.name"
+              type="button"
+              class="host-chip rounded-full border px-2.5 py-1 text-[11.5px]"
+              :class="
+                filters.clientIpAddress === chip.name
+                  ? 'border-accent bg-accent/10 font-semibold text-accent'
+                  : 'border-border text-gray-500'
+              "
+              @click="selectHost(chip)"
+            >
+              <span class="font-mono">{{ chip.name }}</span>
+            </button>
+            <button
+              v-if="filters.clientIpAddress"
+              type="button"
+              class="rounded-full border border-border px-2.5 py-1 text-[11.5px] text-gray-500"
+              @click="clearHost"
+            >
+              All hosts
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+          <input
+            id="filter-client"
+            v-model="filters.clientIpAddress"
+            placeholder="Client IP"
+            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs font-mono"
+            @change="onFilterChange"
+          />
+          <input
+            id="filter-qname"
+            v-model="filters.qname"
+            placeholder="Query name"
+            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+            @change="onFilterChange"
+          />
+          <select
+            id="filter-response-type"
+            v-model="filters.responseType"
+            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+            @change="onFilterChange"
+          >
+            <option value="">All responses</option>
+            <option value="Recursive">Recursive</option>
+            <option value="Cached">Cached</option>
+            <option value="Authoritative">Authoritative</option>
+            <option value="Blocked">Blocked</option>
+            <option value="CacheBlocked">Cache Block</option>
+            <option value="UpstreamBlocked">Upstream Block</option>
+          </select>
+          <select
+            id="filter-protocol"
+            v-model="filters.protocol"
+            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+            @change="onFilterChange"
+          >
+            <option value="">All protocols</option>
+            <option value="Udp">UDP</option>
+            <option value="Tcp">TCP</option>
+            <option value="Tls">DoT</option>
+            <option value="Https">DoH</option>
+            <option value="Quic">DoQ</option>
+          </select>
+          <select
+            id="filter-rcode"
+            v-model="filters.rcode"
+            class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
+            @change="onFilterChange"
+          >
+            <option value="">All RCODEs</option>
+            <option value="NoError">NoError</option>
+            <option value="NxDomain">NxDomain</option>
+            <option value="ServerFailure">ServerFailure</option>
+            <option value="Refused">Refused</option>
+          </select>
+        </div>
       </div>
 
       <HostInsightPanel
@@ -265,57 +337,6 @@ watch(
         :cache-blocked="hostInsight.cacheBlocked"
         :upstream-blocked="hostInsight.upstreamBlocked"
       />
-
-      <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-        <input
-          id="filter-client"
-          v-model="filters.clientIpAddress"
-          placeholder="Client IP"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs font-mono"
-          @change="onFilterChange"
-        />
-        <input
-          id="filter-qname"
-          v-model="filters.qname"
-          placeholder="Query name"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-          @change="onFilterChange"
-        />
-        <select
-          id="filter-response-type"
-          v-model="filters.responseType"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-          @change="onFilterChange"
-        >
-          <option value="">All responses</option>
-          <option value="Recursive">Recursive</option>
-          <option value="Cached">Cached</option>
-          <option value="Authoritative">Authoritative</option>
-          <option value="Blocked">Blocked</option>
-          <option value="CacheBlocked">Cache Block</option>
-          <option value="UpstreamBlocked">Upstream Block</option>
-        </select>
-        <select
-          id="filter-protocol"
-          v-model="filters.protocol"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-          @change="onFilterChange"
-        >
-          <option value="">All protocols</option>
-          <option value="Udp">UDP</option>
-          <option value="Tcp">TCP</option>
-          <option value="Tls">DoT</option>
-          <option value="Https">DoH</option>
-          <option value="Quic">DoQ</option>
-        </select>
-        <input
-          id="filter-rcode"
-          v-model="filters.rcode"
-          placeholder="RCODE"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-xs"
-          @change="onFilterChange"
-        />
-      </div>
 
       <p v-if="loadError" id="logs-error" class="mb-3 text-sm text-crit">{{ loadError }}</p>
 
@@ -331,12 +352,13 @@ watch(
               <th class="px-2.5 py-2 font-bold">RCODE</th>
               <th class="px-2.5 py-2 font-bold">Query</th>
               <th class="px-2.5 py-2 font-bold">Type</th>
+              <th class="px-2.5 py-2 text-right font-bold">RTT</th>
               <th class="px-2.5 py-2 font-bold">Answer</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="entries.length === 0">
-              <td colspan="9" class="px-3 py-6 text-center text-gray-500">
+              <td colspan="10" class="px-3 py-6 text-center text-gray-500">
                 {{ loading ? "Loading…" : "No entries match these filters." }}
               </td>
             </tr>
@@ -349,32 +371,35 @@ watch(
               <td class="px-2.5 py-1.5">{{ row.rcode }}</td>
               <td class="max-w-[220px] truncate px-2.5 py-1.5 font-mono">{{ row.qname }}</td>
               <td class="px-2.5 py-1.5 text-gray-500">{{ row.qtype }}</td>
+              <td class="px-2.5 py-1.5 text-right tabular-nums text-gray-500">{{ formatRtt(row.responseRtt) }}</td>
               <td class="max-w-[200px] truncate px-2.5 py-1.5 font-mono text-gray-500">{{ row.answer ?? "–" }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="mt-2 flex items-center justify-between text-[11.5px] text-gray-500">
-        <span>Showing page {{ pageNumber }} of {{ totalPages }} &middot; {{ totalEntries.toLocaleString() }} entries</span>
+      <div class="mt-2 flex items-center justify-between rounded-b-lg border border-t-0 border-border bg-background-elevated px-3 py-1.5 text-[11.5px] text-gray-500">
+        <span>Showing {{ rangeStart.toLocaleString() }}&ndash;{{ rangeEnd.toLocaleString() }} of {{ totalEntries.toLocaleString() }}</span>
         <div class="flex gap-1">
           <button
             id="prev-page"
             type="button"
-            class="rounded-md border border-border px-2 py-1 disabled:opacity-40"
+            title="Previous page"
+            class="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-background-card disabled:opacity-40"
             :disabled="pageNumber <= 1"
             @click="goToPage(-1)"
           >
-            Prev
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6" /></svg>
           </button>
           <button
             id="next-page"
             type="button"
-            class="rounded-md border border-border px-2 py-1 disabled:opacity-40"
+            title="Next page"
+            class="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-background-card disabled:opacity-40"
             :disabled="pageNumber >= totalPages"
             @click="goToPage(1)"
           >
-            Next
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6" /></svg>
           </button>
         </div>
       </div>
