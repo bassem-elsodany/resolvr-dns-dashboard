@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      # Must match wherever the frontend container is actually reachable
+      # from a browser (the "frontend" service's published port below) —
+      # the backend's CORS check compares against this exactly.
+      - FRONTEND_ORIGIN=http://localhost:8080
+      - PORT=8787
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        # Baked in at build time — must be reachable from the browser,
+        # not from inside the frontend container. localhost:8787 works
+        # because the backend service also publishes to the host.
+        VITE_BACKEND_URL: http://localhost:8787
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
