@@ -132,6 +132,29 @@ describe("actionRoutes", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("uninstalls an app by name", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/uninstall-app").send({ name: "Block Page" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/apps/uninstall");
+    expect(url.searchParams.get("name")).toBe("Block Page");
+  });
+
+  it("rejects uninstall-app without a name, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/uninstall-app").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("revokes a session by partialToken", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok", response: {} }));
     const { app } = testApp(fetchImpl);

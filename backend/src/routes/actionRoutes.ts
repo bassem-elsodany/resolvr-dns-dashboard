@@ -143,6 +143,35 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
     res.json({ status: "ok" });
   });
 
+  // Technitium's Apps API has no enable/disable toggle for an
+  // installed app — only install, update, and uninstall exist (no
+  // "disabled" field even appears in /api/apps/list). Uninstall is the
+  // one real mutating action available for the Apps page.
+  router.post("/uninstall-app", async (req, res) => {
+    const { name } = req.body ?? {};
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/apps/uninstall",
+      { name: name.trim() },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
   router.post("/revoke-session", async (req, res) => {
     const { partialToken } = req.body ?? {};
     if (typeof partialToken !== "string" || !partialToken) {
