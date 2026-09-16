@@ -41,9 +41,49 @@ Browser → frontend (static SPA) → backend (Express) → Technitium DNS Serve
 
 ## Deploying
 
-### Option 1: Docker (recommended)
+### Option 1: Docker with pre-built images (fastest — no cloning)
 
-This is the fastest path to a running instance — one command builds both services and gets you a persistent SQLite volume for users/config.
+Pre-built images are published to GHCR on every release: `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version). Save this as `docker-compose.yml` anywhere and run it — no clone, no build:
+
+```yaml
+services:
+  backend:
+    image: ghcr.io/bassem-elsodany/resolvr-backend:latest
+    ports:
+      - "8787:8787"
+    environment:
+      - FRONTEND_ORIGIN=http://localhost:8080
+      - PORT=8787
+      - DB_PATH=/app/data/resolvr.db
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=change-me-on-first-login
+      - VIEWER_USERNAME=viewer
+      - VIEWER_PASSWORD=change-me-on-first-login
+    volumes:
+      - resolvr-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/bassem-elsodany/resolvr-frontend:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  resolvr-data:
+```
+
+```bash
+docker compose up -d
+```
+
+Then open **http://localhost:8080** and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page). The published frontend image is built with `VITE_BACKEND_URL=http://localhost:8787`, so this only works as-is when both containers run on the same host with those exact ports — for anything else, build from source (Option 2) so you can set your own `VITE_BACKEND_URL`.
+
+### Option 2: Docker, building from source
+
+Same result as Option 1, but builds both images locally instead of pulling them — useful if you want to modify the code, or need a different `VITE_BACKEND_URL`.
 
 **Requirements:** Docker and Docker Compose.
 
@@ -52,15 +92,11 @@ cd technitium-dashboard   # this repo
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Then open **http://localhost:8080** and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page).
-
 To stop it: `docker compose -f docker/docker-compose.yml down` (add `-v` only if you also want to delete the persisted database).
-
-Pre-built images are also published to GHCR on every release — if you don't want to clone the repo at all, `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version) work as drop-in replacements for the `build:` sections in `docker/docker-compose.yml`.
 
 #### Docker environment variables
 
-Set these under the `backend` service in `docker/docker-compose.yml` before deploying anywhere beyond your own machine:
+Set these under the `backend` service (in `docker/docker-compose.yml`, or the pre-built-image compose file above) before deploying anywhere beyond your own machine:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -73,7 +109,7 @@ Set these under the `backend` service in `docker/docker-compose.yml` before depl
 
 The frontend image also takes a build argument, `VITE_BACKEND_URL` (default `http://localhost:8787`) — it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time.
 
-### Option 2: Standalone (without Docker)
+### Option 3: Standalone (without Docker)
 
 Useful for local development, or if you'd rather run the two services with your own process manager (systemd, pm2, etc.) than with Docker.
 
