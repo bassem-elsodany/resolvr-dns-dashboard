@@ -129,3 +129,25 @@ export function unblockDomain(domain: string): Promise<{ status: string }> {
 export function uninstallApp(name: string): Promise<{ status: string }> {
   return call("/api/actions/uninstall-app", { method: "POST", body: JSON.stringify({ name }) })
 }
+
+// Host-to-IP mapping (the AdGuard "DNS rewrites" equivalent) — see
+// backend/src/routes/actionRoutes.ts for why this is a zone create
+// followed by a record add, mirroring the one-zone-per-hostname
+// pattern already used on this server.
+export function createZone(zone: string): Promise<{ status: string }> {
+  return call("/api/actions/create-zone", { method: "POST", body: JSON.stringify({ zone }) })
+}
+
+export function addRecord(params: {
+  domain: string
+  zone?: string
+  type: "A" | "AAAA"
+  ipAddress: string
+  ttl?: number
+}): Promise<{ status: string }> {
+  return call("/api/actions/add-record", { method: "POST", body: JSON.stringify(params) })
+}
+
+export function deleteZone(zone: string): Promise<{ status: string }> {
+  return call("/api/actions/delete-zone", { method: "POST", body: JSON.stringify({ zone }) })
+}

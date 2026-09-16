@@ -6,9 +6,15 @@ vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
   return { ...actual, listZones: vi.fn(), getZoneRecords: vi.fn() }
 })
+vi.mock("../../api/app", async () => {
+  const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
+  return { ...actual, createZone: vi.fn(), addRecord: vi.fn(), deleteZone: vi.fn() }
+})
 
 import { listZones, getZoneRecords, TechnitiumApiError, type ZoneSummary } from "../../api/technitium"
+import { createZone, addRecord, deleteZone, AppApiError } from "../../api/app"
 import { useConnectionStore } from "../../stores/connection"
+import { useAuthStore } from "../../stores/auth"
 import ZonesView from "./ZonesView.vue"
 
 function flushPromises() {
@@ -33,6 +39,9 @@ describe("ZonesView", () => {
     setActivePinia(createPinia())
     vi.mocked(listZones).mockReset()
     vi.mocked(getZoneRecords).mockReset()
+    vi.mocked(createZone).mockReset()
+    vi.mocked(addRecord).mockReset()
+    vi.mocked(deleteZone).mockReset()
   })
 
   it("shows Healthy for a zone with no health flags set", async () => {
@@ -94,5 +103,80 @@ describe("ZonesView", () => {
     const wrapper = await mountConnected()
 
     expect(wrapper.find("#zones-error").text()).toBe("Invalid token or session expired.")
+  })
+
+  describe("host-to-IP mapping (admin only)", () => {
+    it("hides the Add mapping form for a viewer", async () => {
+      useAuthStore().user = { id: 2, username: "reader", role: "viewer" }
+      vi.mocked(listZones).mockResolvedValue(zonesResult([]))
+
+      const wrapper = await mountConnected()
+
+      expect(wrapper.find("#new-mapping-hostname").exists()).toBe(false)
+    })
+
+    it("lets an admin create a host mapping by creating a zone then adding an A record", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listZones).mockResolvedValue(zonesResult([]))
+      vi.mocked(createZone).mockResolvedValue({ status: "ok" })
+      vi.mocked(addRecord).mockResolvedValue({ status: "ok" })
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#new-mapping-hostname").setValue("nas2")
+      await wrapper.get("#new-mapping-ip").setValue("10.0.10.201")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(createZone).toHaveBeenCalledWith("nas2")
+      expect(addRecord).toHaveBeenCalledWith({ domain: "nas2", zone: "nas2", type: "A", ipAddress: "10.0.10.201" })
+      expect(listZones).toHaveBeenCalledTimes(2)
+    })
+
+    it("shows a readable error, not a raw stack trace, when creating a mapping fails", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listZones).mockResolvedValue(zonesResult([]))
+      vi.mocked(createZone).mockRejectedValue(new AppApiError("Zone already exists.", 400))
+
+      const wrapper = await mountConnected()
+      await wrapper.get("#new-mapping-hostname").setValue("nas")
+      await wrapper.get("#new-mapping-ip").setValue("10.0.10.200")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(wrapper.find("#add-mapping-error").text()).toBe("Zone already exists.")
+    })
+
+    it("hides the Delete zone control for a viewer even with a zone selected", async () => {
+      useAuthStore().user = { id: 2, username: "reader", role: "viewer" }
+      vi.mocked(listZones).mockResolvedValue(
+        zonesResult([{ name: "nas2", type: "Primary", dnssecStatus: "Unsigned", soaSerial: 1, disabled: false, lastModified: "" }]),
+      )
+      vi.mocked(getZoneRecords).mockResolvedValue({ response: { zone: { name: "nas2", type: "Primary" }, records: [] } })
+      const wrapper = await mountConnected()
+
+      await wrapper.get("tbody tr").trigger("click")
+      await flushPromises()
+
+      expect(wrapper.find("#delete-zone").exists()).toBe(false)
+    })
+
+    it("lets an admin delete a zone after confirming, then clears the selection", async () => {
+      useAuthStore().user = { id: 1, username: "admin", role: "admin" }
+      vi.mocked(listZones).mockResolvedValue(
+        zonesResult([{ name: "nas2", type: "Primary", dnssecStatus: "Unsigned", soaSerial: 1, disabled: false, lastModified: "" }]),
+      )
+      vi.mocked(getZoneRecords).mockResolvedValue({ response: { zone: { name: "nas2", type: "Primary" }, records: [] } })
+      vi.mocked(deleteZone).mockResolvedValue({ status: "ok" })
+      const wrapper = await mountConnected()
+
+      await wrapper.get("tbody tr").trigger("click")
+      await flushPromises()
+      await wrapper.get("#delete-zone").trigger("click")
+      await wrapper.get("#confirm-delete-zone").trigger("click")
+      await flushPromises()
+
+      expect(deleteZone).toHaveBeenCalledWith("nas2")
+      expect(wrapper.find("#delete-zone").exists()).toBe(false)
+    })
   })
 })
