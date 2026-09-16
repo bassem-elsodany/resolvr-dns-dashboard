@@ -27,6 +27,32 @@ describe("authRoutes", () => {
     expect(res.headers["set-cookie"]?.[0]).toContain("resolvr_session=");
   });
 
+  it("does not mark the session cookie Secure by default — browsers drop Secure cookies over plain HTTP, which is how this app is normally deployed", async () => {
+    const original = process.env.COOKIE_SECURE;
+    delete process.env.COOKIE_SECURE;
+    try {
+      const { app } = testApp();
+      const res = await request(app).post("/api/auth/login").send({ username: "admin", password: "adminpass1" });
+      expect(res.headers["set-cookie"]?.[0]).not.toContain("Secure");
+    } finally {
+      if (original === undefined) delete process.env.COOKIE_SECURE;
+      else process.env.COOKIE_SECURE = original;
+    }
+  });
+
+  it("marks the session cookie Secure when COOKIE_SECURE=true is explicitly set", async () => {
+    const original = process.env.COOKIE_SECURE;
+    process.env.COOKIE_SECURE = "true";
+    try {
+      const { app } = testApp();
+      const res = await request(app).post("/api/auth/login").send({ username: "admin", password: "adminpass1" });
+      expect(res.headers["set-cookie"]?.[0]).toContain("Secure");
+    } finally {
+      if (original === undefined) delete process.env.COOKIE_SECURE;
+      else process.env.COOKIE_SECURE = original;
+    }
+  });
+
   it("rejects an incorrect password", async () => {
     const { app } = testApp();
 

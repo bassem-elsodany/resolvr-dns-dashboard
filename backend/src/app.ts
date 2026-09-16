@@ -38,6 +38,17 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use(cookieParser());
   app.use(attachUser(db));
 
+  // Docker deployments have nothing else scraping request activity, so
+  // without this `docker logs` shows nothing at all for the backend
+  // container regardless of what's actually happening.
+  app.use((req: Request, res: Response, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
+    });
+    next();
+  });
+
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok" });
   });

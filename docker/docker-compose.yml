@@ -25,6 +25,11 @@ services:
       # added your own users from the Users page.
       - VIEWER_USERNAME=viewer
       - VIEWER_PASSWORD=change-me-on-first-login
+      # Left unset (insecure/false) by default: a `Secure` cookie is
+      # silently dropped by the browser over plain HTTP, which is how
+      # this app is normally reached on a LAN — set to "true" only if
+      # you've put a TLS-terminating reverse proxy in front of it.
+      # - COOKIE_SECURE=true
     volumes:
       - resolvr-data:/app/data
     restart: unless-stopped
