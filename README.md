@@ -16,9 +16,9 @@ A monitoring dashboard for [Technitium DNS Server](https://technitium.com/dns/) 
 - **Blocked Zones as an actual tree**, not a flat list — Technitium's blocked-zone API is a tree browser, so Resolvr lazily expands it instead of showing only the misleading top-level labels.
 - **Block list sources** — see and edit the feed URLs your server subscribes to, in one place.
 - **Its own users and roles** — Admins can manage users, edit the Technitium connection, and use the handful of mutating actions below; Viewers get full read access to every monitoring page and nothing else.
-- **A few deliberate, narrow admin actions** on top of an otherwise strictly read-only design: flush the DNS cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, and revoke a stale session. Each one is a single hardcoded call to a specific Technitium endpoint, gated to the admin role, and confirmed before it runs — never a general write proxy.
+- **A set of deliberate, narrow admin actions** on top of an otherwise read-only design: flush the DNS cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, revoke a stale session, uninstall an app, and manage simple host-to-IP mappings (create a zone, add an A/AAAA record, delete the zone — the same pattern as AdGuard Home's "DNS rewrites"). Each one is a single hardcoded call to a specific Technitium endpoint, gated to the admin role, and confirmed before it runs — never a general write proxy.
 
-Resolvr never edits DNS zone records, and never touches anything on your DNS server beyond that short, explicit list of admin actions — every other page only reads.
+Resolvr never touches anything on your DNS server beyond that short, explicit list of admin actions — every other page only reads. A Viewer account can't use any of them.
 
 ## Screenshots
 
@@ -32,7 +32,7 @@ Resolvr never edits DNS zone records, and never touches anything on your DNS ser
 
 Two small services:
 
-- **`backend/`** — a stateless Node/Express proxy in front of Technitium's HTTP API (Technitium sends no CORS headers, so the browser can't call it directly), plus a small SQLite database (`better-sqlite3`) holding Resolvr's own users, sessions, and the shared Technitium connection config. The main proxy (`/api/technitium/*`) only forwards `GET` requests on a hardcoded allowlist of read endpoints — nothing else gets through, regardless of what a client sends. Separately, a handful of admin-only action routes (`/api/actions/*`) each call exactly one specific mutating Technitium endpoint — flush cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, revoke a session, uninstall an app — gated by role, never a general write proxy.
+- **`backend/`** — a stateless Node/Express proxy in front of Technitium's HTTP API (Technitium sends no CORS headers, so the browser can't call it directly), plus a small SQLite database (`better-sqlite3`) holding Resolvr's own users, sessions, and the shared Technitium connection config. The main proxy (`/api/technitium/*`) only forwards `GET` requests on a hardcoded allowlist of read endpoints — nothing else gets through, regardless of what a client sends. Separately, a handful of admin-only action routes (`/api/actions/*`) each call exactly one specific mutating Technitium endpoint — flush cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, revoke a session, uninstall an app, create/delete a zone, add a record — gated by role, never a general write proxy.
 - **`frontend/`** — a Vue 3 + TypeScript + Vite SPA, served as static files in production.
 
 ```
