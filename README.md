@@ -60,6 +60,7 @@ services:
       - ADMIN_PASSWORD=change-me-on-first-login
       - VIEWER_USERNAME=viewer
       - VIEWER_PASSWORD=change-me-on-first-login
+      # - COOKIE_SECURE=true   # only if this is behind your own TLS proxy
     volumes:
       - resolvr-data:/app/data
     restart: unless-stopped
@@ -106,6 +107,7 @@ Set these under the `backend` service (in `docker/docker-compose.yml`, or the pr
 | `VIEWER_USERNAME` | `viewer` | Optional — seeded as a read-only account alongside the admin above, on first boot only. Remove both `VIEWER_*` variables if you don't want one created. |
 | `VIEWER_PASSWORD` | `change-me-on-first-login` | **Change this too**, same first-boot-only caveat as `ADMIN_PASSWORD`. |
 | `FRONTEND_ORIGIN` | *(unset)* | Optional. Unset means the backend accepts whatever origin the browser is actually using — correct by default since this app has no single fixed frontend address (localhost, a LAN IP, a hostname — all work). Set one exact origin here only to lock the app down to a single known address; anything else will then be rejected. |
+| `COOKIE_SECURE` | *(unset, insecure)* | Optional. Unset (or anything other than `true`) means the session cookie is **not** marked `Secure` — required for login to work at all when this app is reached over plain HTTP, which is the normal case for a self-hosted LAN tool. Set to `true` only if you've put this behind your own TLS-terminating reverse proxy; a `Secure` cookie is silently dropped by the browser over plain HTTP, which looks exactly like "login succeeds but every next request says Not authenticated." |
 | `DB_PATH` | `/app/data/resolvr.db` | Where the SQLite file lives, on the `resolvr-data` named volume so it survives rebuilds. |
 
 The frontend image also takes a build argument, `VITE_BACKEND_URL`, left unset by default — the app then targets whatever host served the page, on port 8787, at runtime in the browser. Set it explicitly only for a split-host setup where the backend isn't reachable at that address (it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time).

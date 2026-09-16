@@ -49,19 +49,32 @@ export function getSessionUser(db: Database, token: string | undefined): Session
   return { id: row.id, username: row.username, role: row.role };
 }
 
-const cookieOptions = {
-  httpOnly: true as const,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  maxAge: SESSION_TTL_MS,
-};
+// A `Secure` cookie is never sent by the browser over plain HTTP — the
+// browser silently drops it, not the server, so login *appears* to
+// succeed (200 with the user JSON) while every following request has
+// no cookie at all and comes back 401 "Not authenticated". NODE_ENV
+// tells you nothing about whether the connection is HTTPS: this app
+// runs "production" mode over plain HTTP on a LAN in its most common
+// deployment (confirmed live — a Docker deploy reached over
+// http://<host>:8080 broke exactly this way). Gate this on an
+// explicit opt-in instead, for anyone who does put it behind TLS
+// (their own reverse proxy, a tunnel, etc.).
+function cookieOptions() {
+  return {
+    httpOnly: true as const,
+    sameSite: "lax" as const,
+    secure: process.env.COOKIE_SECURE === "true",
+    maxAge: SESSION_TTL_MS,
+  };
+}
 
 export function setSessionCookie(res: Response, token: string): void {
-  res.cookie(SESSION_COOKIE, token, cookieOptions);
+  res.cookie(SESSION_COOKIE, token, cookieOptions());
 }
 
 export function clearSessionCookie(res: Response): void {
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure: cookieOptions.secure });
+  const { httpOnly, sameSite, secure } = cookieOptions();
+  res.clearCookie(SESSION_COOKIE, { httpOnly, sameSite, secure });
 }
 
 export interface AuthedRequest extends Request {
