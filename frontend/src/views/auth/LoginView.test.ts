@@ -75,4 +75,18 @@ describe("LoginView", () => {
     expect(wrapper.find("#login-error").text()).toBe("Invalid username or password")
     expect(router.currentRoute.value.path).toBe("/login")
   })
+
+  it("switches the brand panel's promo scene when a dot is clicked", async () => {
+    const router = makeRouter()
+    await router.push("/login")
+    const wrapper = mount(LoginView, { global: { plugins: [router] } })
+
+    const dots = wrapper.findAll("[role='tab']")
+    expect(dots.length).toBeGreaterThan(1)
+    expect(wrapper.text()).toContain("Live resolver activity")
+
+    await dots[1]!.trigger("click")
+
+    expect(wrapper.text()).toContain("Blocking, understood")
+  })
 })

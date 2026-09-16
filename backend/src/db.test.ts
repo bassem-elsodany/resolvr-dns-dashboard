@@ -29,6 +29,30 @@ describe("openDb", () => {
     expect(bcrypt.compareSync("hunter22ab", user!.password_hash)).toBe(true);
   });
 
+  it("also seeds a viewer user when seedViewer is given alongside seedAdmin", () => {
+    const db = openDb({
+      path: ":memory:",
+      seedAdmin: { username: "admin", password: "hunter22ab" },
+      seedViewer: { username: "viewer", password: "readerpass1" },
+    });
+
+    const user = db.prepare("SELECT * FROM users WHERE username = 'viewer'").get() as
+      | { role: string; password_hash: string }
+      | undefined;
+
+    expect(user?.role).toBe("viewer");
+    expect(bcrypt.compareSync("readerpass1", user!.password_hash)).toBe(true);
+    const count = (db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }).n;
+    expect(count).toBe(2);
+  });
+
+  it("does not seed a viewer without seedAdmin also being seeded (first-boot-only, same as admin)", () => {
+    const db = openDb({ path: ":memory:", seedAdmin: null, seedViewer: { username: "viewer", password: "readerpass1" } });
+
+    const count = (db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }).n;
+    expect(count).toBe(0);
+  });
+
   it("does not reseed or overwrite an existing admin on a later open (container restart)", () => {
     tmpFile = path.join(os.tmpdir(), `resolvr-test-${Date.now()}.db`);
     const first = openDb({ path: tmpFile, seedAdmin: { username: "admin", password: "original-pass" } });

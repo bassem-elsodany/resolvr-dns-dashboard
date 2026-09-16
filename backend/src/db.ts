@@ -44,6 +44,7 @@ INSERT OR IGNORE INTO app_config (id, base_url, token) VALUES (1, '', '');
 export interface OpenDbOptions {
   path?: string;
   seedAdmin?: { username: string; password: string } | null;
+  seedViewer?: { username: string; password: string } | null;
 }
 
 // Opens (and if needed, initializes + seeds) the app's own SQLite
@@ -64,11 +65,30 @@ export function openDb(options: OpenDbOptions = {}): Database.Database {
       ? { username: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD }
       : null;
 
+  // A seeded viewer is optional — most self-hosted installs just want
+  // the one admin account and add viewers later from the Users page.
+  // Set VIEWER_USERNAME/VIEWER_PASSWORD to also get one out of the box
+  // (e.g. for demos, or a household member who should only ever see
+  // the monitoring pages).
+  const viewerSeed = options.seedViewer !== undefined
+    ? options.seedViewer
+    : process.env.VIEWER_USERNAME && process.env.VIEWER_PASSWORD
+      ? { username: process.env.VIEWER_USERNAME, password: process.env.VIEWER_PASSWORD }
+      : null;
+
   if (seed) {
     const userCount = db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number };
     if (userCount.n === 0) {
       const hash = bcrypt.hashSync(seed.password, 10);
       db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')").run(seed.username, hash);
+
+      if (viewerSeed) {
+        const viewerHash = bcrypt.hashSync(viewerSeed.password, 10);
+        db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'viewer')").run(
+          viewerSeed.username,
+          viewerHash,
+        );
+      }
     }
   }
 
