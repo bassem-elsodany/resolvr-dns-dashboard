@@ -29,7 +29,7 @@ Resolvr never edits DNS zone records, and never touches anything on your DNS ser
 
 Two small services:
 
-- **`backend/`** — a stateless Node/Express proxy in front of Technitium's HTTP API (Technitium sends no CORS headers, so the browser can't call it directly), plus a small SQLite database (`better-sqlite3`) holding Resolvr's own users, sessions, and the shared Technitium connection config. The proxy only forwards `GET` requests on a hardcoded allowlist of read endpoints — nothing else gets through, regardless of what a client sends.
+- **`backend/`** — a stateless Node/Express proxy in front of Technitium's HTTP API (Technitium sends no CORS headers, so the browser can't call it directly), plus a small SQLite database (`better-sqlite3`) holding Resolvr's own users, sessions, and the shared Technitium connection config. The main proxy (`/api/technitium/*`) only forwards `GET` requests on a hardcoded allowlist of read endpoints — nothing else gets through, regardless of what a client sends. Separately, a handful of admin-only action routes (`/api/actions/*`) each call exactly one specific mutating Technitium endpoint — flush cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, revoke a session, uninstall an app — gated by role, never a general write proxy.
 - **`frontend/`** — a Vue 3 + TypeScript + Vite SPA, served as static files in production.
 
 ```
