@@ -17,6 +17,11 @@ services:
       - DB_PATH=/app/data/resolvr.db
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=change-me-on-first-login
+      # Seeded read-only account, alongside the admin above — both only
+      # on first boot (empty database). Change or remove it once you've
+      # added your own users from the Users page.
+      - VIEWER_USERNAME=viewer
+      - VIEWER_PASSWORD=change-me-on-first-login
     volumes:
       - resolvr-data:/app/data
     restart: unless-stopped

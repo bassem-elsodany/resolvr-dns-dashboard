@@ -2,6 +2,8 @@
 
 A monitoring dashboard for [Technitium DNS Server](https://technitium.com/dns/) — live query traffic, clients, cache, zones, DHCP, and blocking, with its own login and role-based access, built for people who run a home or small-office DNS resolver and want a clean view into what it's doing without living in Technitium's own admin console.
 
+`dns` · `technitium` · `dns-server` · `dashboard` · `self-hosted` · `homelab` · `monitoring` · `dns-monitoring` · `ad-blocking` · `vue3` · `typescript` · `docker` · `sqlite` · `express`
+
 ![Overview dashboard](docs/screenshots/overview.png)
 
 ## What it does
@@ -19,8 +21,9 @@ Resolvr never edits DNS zone records, and never touches anything on your DNS ser
 
 | | |
 |---|---|
-| ![Query Logs](docs/screenshots/query-logs.png) | ![Clients](docs/screenshots/clients.png) |
-| ![Blocked Zones tree](docs/screenshots/blocked-zones.png) | ![Users](docs/screenshots/users.png) |
+| ![Sign in](docs/screenshots/login.png) | ![Query Logs](docs/screenshots/query-logs.png) |
+| ![Clients](docs/screenshots/clients.png) | ![Blocked Zones tree](docs/screenshots/blocked-zones.png) |
+| ![Users](docs/screenshots/users.png) | |
 
 ## Architecture
 
@@ -46,7 +49,7 @@ cd technitium-dashboard   # this repo
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Then open **http://localhost:8080** and sign in with the default admin credentials (see [Configuration](#configuration) — **change this password immediately** from the Users page).
+Then open **http://localhost:8080** and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page).
 
 To stop it: `docker compose -f docker/docker-compose.yml down` (add `-v` only if you also want to delete the persisted database).
 
@@ -58,6 +61,8 @@ Set these under the `backend` service in `docker/docker-compose.yml` before depl
 |---|---|---|
 | `ADMIN_USERNAME` | `admin` | Seeded as the first admin account on first boot only. |
 | `ADMIN_PASSWORD` | `change-me-on-first-login` | **Change this.** Only used the very first time the database is empty — changing it later has no effect on an existing install; change the password from the Users page instead. |
+| `VIEWER_USERNAME` | `viewer` | Optional — seeded as a read-only account alongside the admin above, on first boot only. Remove both `VIEWER_*` variables if you don't want one created. |
+| `VIEWER_PASSWORD` | `change-me-on-first-login` | **Change this too**, same first-boot-only caveat as `ADMIN_PASSWORD`. |
 | `FRONTEND_ORIGIN` | `http://localhost:8080` | Must match wherever the frontend is actually reachable from a browser — the backend's CORS check compares against this exactly. |
 | `DB_PATH` | `/app/data/resolvr.db` | Where the SQLite file lives, on the `resolvr-data` named volume so it survives rebuilds. |
 
@@ -79,6 +84,8 @@ PORT=8787 \
 FRONTEND_ORIGIN=http://localhost:5173 \
 ADMIN_USERNAME=admin \
 ADMIN_PASSWORD=change-me-on-first-login \
+VIEWER_USERNAME=viewer \
+VIEWER_PASSWORD=change-me-on-first-login \
 DB_PATH=./data/resolvr.db \
 npm start
 ```
@@ -108,10 +115,19 @@ Whatever serves `frontend/dist/` must be reachable at the origin you set as `FRO
 
 ## Configuration
 
-On first boot (empty database), the backend seeds one admin account from `ADMIN_USERNAME` / `ADMIN_PASSWORD`. After that, sign in and:
+On first boot (empty database), the backend seeds these accounts from the environment variables above — both are real, working logins on a fresh install:
+
+| Username | Password | Role | Can do |
+|---|---|---|---|
+| `admin` | `change-me-on-first-login` | Admin | Everything — manage users, edit the Technitium connection, and the handful of mutating actions (flush cache, block-list updates, etc.) |
+| `viewer` | `change-me-on-first-login` | Viewer | Every monitoring page, read-only. No Users, no Connection Settings, no mutating actions. |
+
+**Change both passwords immediately** — from the Users page once signed in as `admin`. The viewer account is optional (see `VIEWER_USERNAME`/`VIEWER_PASSWORD` above); omit those two variables if you don't want one seeded.
+
+After signing in:
 
 1. Go to **Connection Settings** (admin only) and point Resolvr at your Technitium server — its base URL and an API token (create one under Technitium's own Administration → Sessions → Create Token, or use a full login token). This is validated against the real server before it's saved, and shared by everyone who signs into this Resolvr instance.
-2. Go to **Users** to change the admin password and add any other accounts — `admin` (full access) or `viewer` (read-only).
+2. Go to **Users** to change both seeded passwords and add any other accounts — `admin` (full access) or `viewer` (read-only).
 
 ## Development
 
