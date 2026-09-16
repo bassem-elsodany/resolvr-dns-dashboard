@@ -2,8 +2,9 @@
 // management, and the admin-managed Technitium connection config. These
 // are entirely separate from the Technitium proxy in technitium.ts:
 // nothing here ever talks to the DNS server directly.
+import { resolveBackendUrl } from "../lib/backendUrl"
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8787"
+const BACKEND_URL = resolveBackendUrl()
 
 export class AppApiError extends Error {
   readonly status: number

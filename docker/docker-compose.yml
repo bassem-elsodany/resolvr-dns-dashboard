@@ -6,10 +6,13 @@ services:
     ports:
       - "8787:8787"
     environment:
-      # Must match wherever the frontend container is actually reachable
-      # from a browser (the "frontend" service's published port below) —
-      # the backend's CORS check compares against this exactly.
-      - FRONTEND_ORIGIN=http://localhost:8080
+      # Left unset by default: the backend then reflects whatever
+      # Origin the browser sends instead of checking against one fixed
+      # value (safe — the session cookie is SameSite=Lax, so a browser
+      # never attaches it to a cross-site request regardless of CORS).
+      # Set this to one exact origin only if you want to lock the app
+      # down to a single known frontend address.
+      # - FRONTEND_ORIGIN=http://localhost:8080
       - PORT=8787
       # SQLite file for this dashboard's own users/sessions/connection
       # config — lives on the named volume below, not inside the DNS
@@ -30,11 +33,13 @@ services:
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile
-      args:
-        # Baked in at build time — must be reachable from the browser,
-        # not from inside the frontend container. localhost:8787 works
-        # because the backend service also publishes to the host.
-        VITE_BACKEND_URL: http://localhost:8787
+      # No VITE_BACKEND_URL build arg — left unset, the app falls back
+      # to "whatever host served this page, port 8787" at runtime in
+      # the browser (see frontend/src/lib/backendUrl.ts). That's
+      # correct here without any configuration, including when this is
+      # reached via a LAN IP or hostname rather than localhost. Add
+      # `args: { VITE_BACKEND_URL: http://your-backend:8787 }` only for
+      # a split-host setup where the backend lives somewhere else.
     ports:
       - "8080:80"
     depends_on:
