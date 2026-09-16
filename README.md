@@ -139,3 +139,7 @@ cd frontend && npm test && npm run build
 ```
 
 Type-checking runs as part of `npm run build` in both.
+
+## License
+
+[MIT](LICENSE)
