@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 .DS_Store
+
+# Local tooling / working notes — not part of the published project
+.claude/
+tasks/
