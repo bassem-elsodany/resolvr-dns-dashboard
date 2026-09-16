@@ -34,6 +34,13 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # arm64 (Raspberry Pi and friends) isn't the runner's native arch —
+      # QEMU lets buildx cross-build it here instead of needing a
+      # separate arm64 runner. Slower (the backend stage compiles
+      # better-sqlite3's native addon under emulation), but this only
+      # runs on release/main pushes, not on every commit.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v6
@@ -41,5 +48,6 @@ jobs:
           context: .
           file: docker/${{ matrix.service }}.Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
