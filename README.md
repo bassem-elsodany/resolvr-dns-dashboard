@@ -1,5 +1,8 @@
 # Resolvr
 
+[![CI](https://github.com/bassem-elsodany/resolvr-dns-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/bassem-elsodany/resolvr-dns-dashboard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A monitoring dashboard for [Technitium DNS Server](https://technitium.com/dns/) — live query traffic, clients, cache, zones, DHCP, and blocking, with its own login and role-based access, built for people who run a home or small-office DNS resolver and want a clean view into what it's doing without living in Technitium's own admin console.
 
 `dns` · `technitium` · `dns-server` · `dashboard` · `self-hosted` · `homelab` · `monitoring` · `dns-monitoring` · `ad-blocking` · `vue3` · `typescript` · `docker` · `sqlite` · `express`
@@ -52,6 +55,8 @@ docker compose -f docker/docker-compose.yml up -d --build
 Then open **http://localhost:8080** and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page).
 
 To stop it: `docker compose -f docker/docker-compose.yml down` (add `-v` only if you also want to delete the persisted database).
+
+Pre-built images are also published to GHCR on every release — if you don't want to clone the repo at all, `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version) work as drop-in replacements for the `build:` sections in `docker/docker-compose.yml`.
 
 #### Docker environment variables
 
