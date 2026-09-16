@@ -144,4 +144,29 @@ describe("CORS", () => {
 
     expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
   });
+
+  it("does not reflect an arbitrary origin when one is explicitly configured — the browser enforces the mismatch", async () => {
+    const app = createApp({ frontendOrigin: "http://localhost:5173", fetchImpl: vi.fn(), db: openDb({ path: ":memory:" }) });
+
+    const res = await request(app).get("/healthz").set("Origin", "http://192.168.1.50:8080");
+
+    // cors() always echoes the configured value for a fixed string — it
+    // never reflects the request's actual Origin. A real browser then
+    // rejects the response client-side because this doesn't match what
+    // it sent; that enforcement isn't visible as a missing header here.
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+  });
+
+  it("reflects any origin when FRONTEND_ORIGIN isn't configured — the app has no single fixed frontend address", async () => {
+    // Regression: a Raspberry Pi deploy reached from another device's
+    // browser (e.g. http://192.168.1.50:8080) got CORS-blocked because
+    // the old default only ever allowed http://localhost:5173/8080.
+    const app = createApp({ fetchImpl: vi.fn(), db: openDb({ path: ":memory:" }) });
+
+    const fromLan = await request(app).get("/healthz").set("Origin", "http://192.168.1.50:8080");
+    const fromLocalhost = await request(app).get("/healthz").set("Origin", "http://localhost:5173");
+
+    expect(fromLan.headers["access-control-allow-origin"]).toBe("http://192.168.1.50:8080");
+    expect(fromLocalhost.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+  });
 });

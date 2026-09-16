@@ -45,6 +45,8 @@ Browser → frontend (static SPA) → backend (Express) → Technitium DNS Serve
 
 Pre-built images are published to GHCR on every release: `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version). Save this as `docker-compose.yml` anywhere and run it — no clone, no build:
 
+Images are multi-arch (`linux/amd64` and `linux/arm64` — Raspberry Pi included).
+
 ```yaml
 services:
   backend:
@@ -52,7 +54,6 @@ services:
     ports:
       - "8787:8787"
     environment:
-      - FRONTEND_ORIGIN=http://localhost:8080
       - PORT=8787
       - DB_PATH=/app/data/resolvr.db
       - ADMIN_USERNAME=admin
@@ -79,11 +80,11 @@ volumes:
 docker compose up -d
 ```
 
-Then open **http://localhost:8080** and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page). The published frontend image is built with `VITE_BACKEND_URL=http://localhost:8787`, so this only works as-is when both containers run on the same host with those exact ports — for anything else, build from source (Option 2) so you can set your own `VITE_BACKEND_URL`.
+Then open **http://\<this-machine's-address\>:8080** — `localhost` if you're on the same machine, or its LAN IP/hostname from anywhere else (e.g. a Raspberry Pi reached from your laptop) — and sign in with one of the seeded accounts below (see [Configuration](#configuration) — **change these passwords immediately** from the Users page). No `VITE_BACKEND_URL` or `FRONTEND_ORIGIN` configuration needed: the frontend targets whatever host served the page on port 8787, and the backend accepts whatever origin the browser is actually using — both work correctly no matter which address you use to reach the UI.
 
 ### Option 2: Docker, building from source
 
-Same result as Option 1, but builds both images locally instead of pulling them — useful if you want to modify the code, or need a different `VITE_BACKEND_URL`.
+Same result as Option 1, but builds both images locally instead of pulling them — useful if you want to modify the code, or need a fixed `VITE_BACKEND_URL`/`FRONTEND_ORIGIN` for a split-host setup.
 
 **Requirements:** Docker and Docker Compose.
 
@@ -104,10 +105,10 @@ Set these under the `backend` service (in `docker/docker-compose.yml`, or the pr
 | `ADMIN_PASSWORD` | `change-me-on-first-login` | **Change this.** Only used the very first time the database is empty — changing it later has no effect on an existing install; change the password from the Users page instead. |
 | `VIEWER_USERNAME` | `viewer` | Optional — seeded as a read-only account alongside the admin above, on first boot only. Remove both `VIEWER_*` variables if you don't want one created. |
 | `VIEWER_PASSWORD` | `change-me-on-first-login` | **Change this too**, same first-boot-only caveat as `ADMIN_PASSWORD`. |
-| `FRONTEND_ORIGIN` | `http://localhost:8080` | Must match wherever the frontend is actually reachable from a browser — the backend's CORS check compares against this exactly. |
+| `FRONTEND_ORIGIN` | *(unset)* | Optional. Unset means the backend accepts whatever origin the browser is actually using — correct by default since this app has no single fixed frontend address (localhost, a LAN IP, a hostname — all work). Set one exact origin here only to lock the app down to a single known address; anything else will then be rejected. |
 | `DB_PATH` | `/app/data/resolvr.db` | Where the SQLite file lives, on the `resolvr-data` named volume so it survives rebuilds. |
 
-The frontend image also takes a build argument, `VITE_BACKEND_URL` (default `http://localhost:8787`) — it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time.
+The frontend image also takes a build argument, `VITE_BACKEND_URL`, left unset by default — the app then targets whatever host served the page, on port 8787, at runtime in the browser. Set it explicitly only for a split-host setup where the backend isn't reachable at that address (it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time).
 
 ### Option 3: Standalone (without Docker)
 

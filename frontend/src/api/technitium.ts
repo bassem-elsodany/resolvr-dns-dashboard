@@ -1,12 +1,13 @@
 // Typed client for the Technitium DNS Server API, called through the
 // backend proxy (backend/src/app.ts) — never directly, since Technitium
-// sends no CORS headers. See tasks/plan.md for why the proxy exists.
+// sends no CORS headers.
 //
 // Every path below comes from ENDPOINTS (./endpoints.ts) by key — never
 // a literal string — so an API path only ever needs to change in one
 // place.
 
 import { ENDPOINTS } from "./endpoints"
+import { resolveBackendUrl } from "../lib/backendUrl"
 
 export interface TechnitiumCredentials {
   baseUrl: string
@@ -23,7 +24,7 @@ export class TechnitiumApiError extends Error {
   }
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8787"
+const BACKEND_URL = resolveBackendUrl()
 
 async function technitiumGet<T>(
   path: string,

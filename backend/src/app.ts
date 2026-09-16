@@ -16,12 +16,24 @@ export interface CreateAppOptions {
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
-  const frontendOrigin = options.frontendOrigin ?? process.env.FRONTEND_ORIGIN ?? "http://localhost:5173";
+  const frontendOrigin = options.frontendOrigin ?? process.env.FRONTEND_ORIGIN;
   const fetchImpl = options.fetchImpl ?? fetch;
   const db = options.db ?? openDb();
 
   const app = express();
-  app.use(cors({ origin: frontendOrigin, credentials: true }));
+  // With no FRONTEND_ORIGIN configured, reflect whatever Origin the
+  // browser sends (cors' `origin: true`) instead of a single hardcoded
+  // default — this app has no fixed "the frontend" address: it's
+  // commonly reached via localhost, a LAN IP, or a hostname depending
+  // on the device viewing it (confirmed live: a Raspberry Pi deploy
+  // reached from another device's browser got CORS-blocked because the
+  // origin didn't match a hardcoded http://localhost:8080). This is
+  // safe to reflect because the session cookie is SameSite=Lax, which
+  // Chrome/Firefox/Safari never attach to a cross-site fetch/XHR
+  // regardless of what CORS allows — only a matching-origin request can
+  // ever carry it. Set FRONTEND_ORIGIN explicitly to lock this down to
+  // one exact origin instead.
+  app.use(cors({ origin: frontendOrigin ?? true, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
   app.use(attachUser(db));
