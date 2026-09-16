@@ -43,7 +43,7 @@ Browser → frontend (static SPA) → backend (Express) → Technitium DNS Serve
 
 ### Option 1: Docker with pre-built images (fastest — no cloning)
 
-Pre-built images are published to GHCR on every release: `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version). Save this as `docker-compose.yml` anywhere and run it — no clone, no build:
+Pre-built images are published to GHCR on every release: `ghcr.io/bassem-elsodany/resolvr-backend` and `ghcr.io/bassem-elsodany/resolvr-frontend` (tagged `latest` and by version). Save this as `docker-compose.yml` anywhere and run it — no clone, no build (also available as [`docker/docker-compose.prebuilt.yml`](docker/docker-compose.prebuilt.yml) in this repo):
 
 Images are multi-arch (`linux/amd64` and `linux/arm64` — Raspberry Pi included).
 
@@ -51,6 +51,7 @@ Images are multi-arch (`linux/amd64` and `linux/arm64` — Raspberry Pi included
 services:
   backend:
     image: ghcr.io/bassem-elsodany/resolvr-backend:latest
+    pull_policy: always   # always check the registry, don't reuse a stale local image
     ports:
       - "8787:8787"
     environment:
@@ -67,6 +68,7 @@ services:
 
   frontend:
     image: ghcr.io/bassem-elsodany/resolvr-frontend:latest
+    pull_policy: always
     ports:
       - "8080:80"
     depends_on:
@@ -76,6 +78,8 @@ services:
 volumes:
   resolvr-data:
 ```
+
+With `pull_policy: always`, `docker compose up -d` re-checks the registry itself on every run — no need to remember `docker compose pull` separately. If you don't set this, Docker silently keeps running whatever image is already cached locally under the `latest` tag, even after a new one is published.
 
 ```bash
 docker compose up -d

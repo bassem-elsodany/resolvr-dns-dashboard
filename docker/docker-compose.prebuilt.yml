@@ -1,0 +1,29 @@
+services:
+  backend:
+    image: ghcr.io/bassem-elsodany/resolvr-backend:latest
+    pull_policy: always   # always check the registry, don't reuse a stale local image
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
+      - DB_PATH=/app/data/resolvr.db
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=change-me-on-first-login
+      - VIEWER_USERNAME=viewer
+      - VIEWER_PASSWORD=change-me-on-first-login
+      # - COOKIE_SECURE=true   # only if this is behind your own TLS proxy
+    volumes:
+      - resolvr-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/bassem-elsodany/resolvr-frontend:latest
+    pull_policy: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  resolvr-data:
