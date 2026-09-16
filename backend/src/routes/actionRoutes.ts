@@ -172,6 +172,93 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
     res.json({ status: "ok" });
   });
 
+  // Host-to-IP mapping (the AdGuard "DNS rewrites" equivalent). This
+  // server's own zones show the pattern Technitium expects for it:
+  // one Primary zone named exactly the hostname, with a single A/AAAA
+  // record at its apex — so creating a mapping is a zone create
+  // followed by a record add, and removing one is a zone delete (which
+  // takes its records with it). Restricted to A/AAAA — this is for
+  // name-to-address mappings, not general record editing.
+  router.post("/create-zone", async (req, res) => {
+    const { zone } = req.body ?? {};
+    if (typeof zone !== "string" || !zone.trim()) {
+      res.status(400).json({ error: "zone is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/zones/create",
+      { zone: zone.trim(), type: "Primary" },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
+  router.post("/add-record", async (req, res) => {
+    const { domain, zone, type, ipAddress, ttl } = req.body ?? {};
+    if (typeof domain !== "string" || !domain.trim()) {
+      res.status(400).json({ error: "domain is required" });
+      return;
+    }
+    if (type !== "A" && type !== "AAAA") {
+      res.status(400).json({ error: "type must be A or AAAA" });
+      return;
+    }
+    if (typeof ipAddress !== "string" || !ipAddress.trim()) {
+      res.status(400).json({ error: "ipAddress is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const params: Record<string, string> = { domain: domain.trim(), type, ipAddress: ipAddress.trim() };
+    if (typeof zone === "string" && zone.trim()) params.zone = zone.trim();
+    if (typeof ttl === "number" && ttl > 0) params.ttl = String(ttl);
+    const result = await callTechnitiumAction(config.base_url, config.token, "/zones/records/add", params, fetchImpl);
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
+  router.post("/delete-zone", async (req, res) => {
+    const { zone } = req.body ?? {};
+    if (typeof zone !== "string" || !zone.trim()) {
+      res.status(400).json({ error: "zone is required" });
+      return;
+    }
+    const config = requireConfig(db);
+    if (!config) {
+      res.status(400).json({ error: "No Technitium server is configured yet." });
+      return;
+    }
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/zones/delete",
+      { zone: zone.trim() },
+      fetchImpl,
+    );
+    if (!result.ok) {
+      res.status(502).json({ error: result.error });
+      return;
+    }
+    res.json({ status: "ok" });
+  });
+
   router.post("/revoke-session", async (req, res) => {
     const { partialToken } = req.body ?? {};
     if (typeof partialToken !== "string" || !partialToken) {

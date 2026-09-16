@@ -2,11 +2,14 @@
 import { ref, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
+import { useAuthStore } from "../../stores/auth"
 import { listZones, getZoneRecords, TechnitiumApiError, type ZoneSummary, type ZoneRecord } from "../../api/technitium"
+import { createZone, addRecord, deleteZone, AppApiError } from "../../api/app"
 import { formatRecordValue } from "../../lib/formatRecordValue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const auth = useAuthStore()
 
 const ZONES_PER_PAGE = 15
 
@@ -64,6 +67,8 @@ async function selectZone(name: string): Promise<void> {
   selectedZone.value = name
   recordsLoading.value = true
   recordsError.value = null
+  confirmingDelete.value = false
+  deleteMappingError.value = null
   try {
     const res = await getZoneRecords(name, connection.credentials)
     zoneRecords.value = res.response.records
@@ -72,6 +77,54 @@ async function selectZone(name: string): Promise<void> {
     zoneRecords.value = []
   } finally {
     recordsLoading.value = false
+  }
+}
+
+// Host-to-IP mapping (the AdGuard "DNS rewrites" equivalent) — see
+// backend/src/routes/actionRoutes.ts for why this is a zone create
+// followed by a record add rather than one call.
+const newHostname = ref("")
+const newIpAddress = ref("")
+const addingMapping = ref(false)
+const addMappingError = ref<string | null>(null)
+
+async function onAddMapping(): Promise<void> {
+  const hostname = newHostname.value.trim()
+  const ipAddress = newIpAddress.value.trim()
+  if (!hostname || !ipAddress) return
+  addingMapping.value = true
+  addMappingError.value = null
+  try {
+    await createZone(hostname)
+    await addRecord({ domain: hostname, zone: hostname, type: "A", ipAddress })
+    newHostname.value = ""
+    newIpAddress.value = ""
+    await load()
+  } catch (err) {
+    addMappingError.value = err instanceof AppApiError ? err.message : "Could not create this host mapping."
+  } finally {
+    addingMapping.value = false
+  }
+}
+
+const confirmingDelete = ref(false)
+const deletingMapping = ref(false)
+const deleteMappingError = ref<string | null>(null)
+
+async function onDeleteMapping(): Promise<void> {
+  if (!selectedZone.value) return
+  deletingMapping.value = true
+  deleteMappingError.value = null
+  try {
+    await deleteZone(selectedZone.value)
+    selectedZone.value = null
+    zoneRecords.value = []
+    confirmingDelete.value = false
+    await load()
+  } catch (err) {
+    deleteMappingError.value = err instanceof AppApiError ? err.message : "Could not delete this zone."
+  } finally {
+    deletingMapping.value = false
   }
 }
 
@@ -104,14 +157,40 @@ watch(
         <h1 class="text-lg font-semibold tracking-tight text-fg">Authoritative Zones</h1>
         <p class="mt-1 text-sm text-gray-500">{{ totalZones }} zones hosted on this server</p>
       </div>
-      <input
-        id="zone-filter"
-        v-model="filterName"
-        placeholder="Filter by zone name…"
-        class="w-56 rounded-md border border-border bg-background-card px-3 py-1.5 text-sm"
-        @change="onFilterChange"
-      />
+      <div class="flex flex-wrap items-center gap-2">
+        <form v-if="auth.isAdmin" class="flex items-center gap-1.5" @submit.prevent="onAddMapping">
+          <input
+            id="new-mapping-hostname"
+            v-model="newHostname"
+            placeholder="hostname"
+            class="w-32 rounded-md border border-border bg-background-card px-2.5 py-1.5 font-mono text-xs"
+          />
+          <span class="text-xs text-gray-500">&rarr;</span>
+          <input
+            id="new-mapping-ip"
+            v-model="newIpAddress"
+            placeholder="10.0.10.50"
+            class="w-32 rounded-md border border-border bg-background-card px-2.5 py-1.5 font-mono text-xs"
+          />
+          <button
+            id="add-mapping"
+            type="submit"
+            :disabled="addingMapping"
+            class="rounded-md bg-accent px-2.5 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-50"
+          >
+            {{ addingMapping ? "Adding…" : "Add mapping" }}
+          </button>
+        </form>
+        <input
+          id="zone-filter"
+          v-model="filterName"
+          placeholder="Filter by zone name…"
+          class="w-56 rounded-md border border-border bg-background-card px-3 py-1.5 text-sm"
+          @change="onFilterChange"
+        />
+      </div>
     </div>
+    <p v-if="addMappingError" id="add-mapping-error" class="mb-3 text-sm text-crit">{{ addMappingError }}</p>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">
       Connect to a Technitium server on the
@@ -194,7 +273,38 @@ watch(
           Select any zone on the left to preview its records here &mdash; view only.
         </div>
         <template v-else>
-          <div class="mb-2 font-mono text-[13px] font-semibold">{{ selectedZone }}</div>
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <div class="font-mono text-[13px] font-semibold">{{ selectedZone }}</div>
+            <div v-if="auth.isAdmin" class="flex-none">
+              <div v-if="confirmingDelete" class="flex items-center gap-1.5">
+                <span class="text-[11px] text-gray-500">Delete this zone?</span>
+                <button
+                  id="confirm-delete-zone"
+                  type="button"
+                  :disabled="deletingMapping"
+                  class="text-[11px] font-semibold text-crit disabled:opacity-50"
+                  @click="onDeleteMapping"
+                >
+                  {{ deletingMapping ? "Deleting…" : "Confirm" }}
+                </button>
+                <button type="button" class="text-[11px] text-gray-500" @click="confirmingDelete = false">
+                  Cancel
+                </button>
+              </div>
+              <button
+                v-else
+                id="delete-zone"
+                type="button"
+                class="text-[11px] font-medium text-crit"
+                @click="confirmingDelete = true"
+              >
+                Delete zone
+              </button>
+            </div>
+          </div>
+          <p v-if="deleteMappingError" id="delete-zone-error" class="mb-2 text-sm text-crit">
+            {{ deleteMappingError }}
+          </p>
           <p v-if="recordsError" id="zone-records-error" class="text-sm text-crit">{{ recordsError }}</p>
           <p v-else-if="recordsLoading" class="text-sm text-gray-500">Loading…</p>
           <div v-else class="overflow-x-auto rounded-lg border border-border">

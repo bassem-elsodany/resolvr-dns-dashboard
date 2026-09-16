@@ -155,6 +155,94 @@ describe("actionRoutes", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("creates a Primary zone for a host mapping", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/create-zone").send({ zone: "nas2" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/zones/create");
+    expect(url.searchParams.get("zone")).toBe("nas2");
+    expect(url.searchParams.get("type")).toBe("Primary");
+  });
+
+  it("rejects create-zone without a zone, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/create-zone").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("adds an A record mapping a hostname to an IP", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app)
+      .post("/api/actions/add-record")
+      .send({ domain: "nas2", zone: "nas2", type: "A", ipAddress: "10.0.10.201", ttl: 300 });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/zones/records/add");
+    expect(url.searchParams.get("domain")).toBe("nas2");
+    expect(url.searchParams.get("zone")).toBe("nas2");
+    expect(url.searchParams.get("type")).toBe("A");
+    expect(url.searchParams.get("ipAddress")).toBe("10.0.10.201");
+    expect(url.searchParams.get("ttl")).toBe("300");
+  });
+
+  it("rejects add-record with a type other than A or AAAA, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app)
+      .post("/api/actions/add-record")
+      .send({ domain: "nas2", type: "CNAME", ipAddress: "10.0.10.201" });
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects add-record without an ipAddress, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/add-record").send({ domain: "nas2", type: "A" });
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("deletes a zone, removing a host mapping entirely", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/delete-zone").send({ zone: "nas2" });
+
+    expect(res.status).toBe(200);
+    const [calledUrl] = fetchImpl.mock.calls[0]!;
+    const url = new URL(String(calledUrl));
+    expect(url.pathname).toBe("/api/zones/delete");
+    expect(url.searchParams.get("zone")).toBe("nas2");
+  });
+
+  it("rejects delete-zone without a zone, without calling upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/delete-zone").send({});
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("revokes a session by partialToken", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok", response: {} }));
     const { app } = testApp(fetchImpl);
