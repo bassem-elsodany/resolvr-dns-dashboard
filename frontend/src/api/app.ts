@@ -124,3 +124,7 @@ export function blockDomain(domain: string): Promise<{ status: string }> {
 export function unblockDomain(domain: string): Promise<{ status: string }> {
   return call("/api/actions/unblock-domain", { method: "POST", body: JSON.stringify({ domain }) })
 }
+
+export function uninstallApp(name: string): Promise<{ status: string }> {
+  return call("/api/actions/uninstall-app", { method: "POST", body: JSON.stringify({ name }) })
+}
