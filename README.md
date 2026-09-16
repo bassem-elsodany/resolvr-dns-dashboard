@@ -138,4 +138,4 @@ cd backend && npm test && npm run build
 cd frontend && npm test && npm run build
 ```
 
-Type-checking runs as part of `npm run build` in both. See `tasks/plan.md` for the original design/build history if you're digging into how a particular piece works.
+Type-checking runs as part of `npm run build` in both.
