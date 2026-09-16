@@ -13,9 +13,11 @@ import {
   type TopClientEntry,
 } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
+import { useLivePolling } from "../../composables/useLivePolling"
 import StatTiles from "../../components/overview/StatTiles.vue"
 import QueriesChart from "../../components/overview/QueriesChart.vue"
 import TopList from "../../components/overview/TopList.vue"
+import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
 const auth = useAuthStore()
@@ -95,6 +97,8 @@ async function onForceUpdateBlockLists(): Promise<void> {
   }
 }
 
+const { liveOn, toggle: toggleLive } = useLivePolling(() => load())
+
 onMounted(load)
 watch(() => timeRange.selected, load)
 watch(() => refresh.tick, load)
@@ -112,11 +116,19 @@ watch(
 
 <template>
   <div>
-    <div class="mb-5">
-      <h1 class="text-lg font-semibold tracking-tight text-fg">Overview</h1>
-      <p class="mt-1 text-sm text-gray-500">
-        Live resolver activity<span v-if="connection.serverDomain"> for {{ connection.serverDomain }}</span>
-      </p>
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold tracking-tight text-fg">Overview</h1>
+        <p class="mt-1 text-sm text-gray-500">
+          Live resolver activity<span v-if="connection.serverDomain"> for {{ connection.serverDomain }}</span>
+        </p>
+      </div>
+      <LiveToggle
+        v-if="connection.isConfigured"
+        id="overview-live-toggle"
+        :model-value="liveOn"
+        @update:model-value="toggleLive"
+      />
     </div>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">

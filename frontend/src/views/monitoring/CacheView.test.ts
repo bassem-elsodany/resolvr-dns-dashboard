@@ -134,4 +134,82 @@ describe("CacheView", () => {
 
     expect(wrapper.find("#flush-cache-error").text()).toBe("Could not reach Technitium server: timeout")
   })
+
+  describe("tree browsing (regression: /api/cache/list is a domain-tree browser, not a flat lookup)", () => {
+    it("shows cached subdomains as clickable chips when a domain has no records of its own", async () => {
+      // Confirmed live: browsing "google.com" itself can return zones
+      // (cached subdomains like www.google.com) alongside its own
+      // records — but a domain with ONLY zones and no records used to
+      // render a table with headers and zero rows, looking blank, with
+      // the zones silently discarded.
+      vi.mocked(listCache).mockResolvedValue({
+        response: { domain: "google.com", zones: ["www.google.com", "l.google.com"], records: [] },
+      })
+      const wrapper = await mountConnected()
+
+      await wrapper.get("#cache-domain").setValue("google.com")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(wrapper.find("#cache-empty").exists()).toBe(false)
+      expect(wrapper.text()).toContain("www.google.com")
+      expect(wrapper.text()).toContain("l.google.com")
+    })
+
+    it("browses into a subdomain when its chip is clicked", async () => {
+      vi.mocked(listCache)
+        .mockResolvedValueOnce({ response: { domain: "google.com", zones: ["www.google.com"], records: [] } })
+        .mockResolvedValueOnce({
+          response: {
+            domain: "www.google.com",
+            zones: [],
+            records: [{ name: "www.google.com", type: "A", ttl: "120", rData: { value: "1.2.3.4" } }],
+          },
+        })
+      const wrapper = await mountConnected()
+      await wrapper.get("#cache-domain").setValue("google.com")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      await wrapper.get(".cache-zone-chip").trigger("click")
+      await flushPromises()
+
+      expect(listCache).toHaveBeenCalledWith("www.google.com", expect.anything())
+      expect((wrapper.get("#cache-domain").element as HTMLInputElement).value).toBe("www.google.com")
+      expect(wrapper.text()).toContain("1.2.3.4")
+    })
+
+    it("allows browsing from the root with an empty domain", async () => {
+      vi.mocked(listCache).mockResolvedValue({
+        response: { domain: "", zones: ["com", "org", "net"], records: [] },
+      })
+      const wrapper = await mountConnected()
+
+      await wrapper.get("form").trigger("submit") // domain left blank
+
+      await flushPromises()
+
+      expect(listCache).toHaveBeenCalledWith("", expect.anything())
+      expect(wrapper.text()).toContain("Cached top-level domains")
+      expect(wrapper.text()).toContain("com")
+    })
+
+    it("shows both the subdomain chips and the domain's own records when both are present", async () => {
+      vi.mocked(listCache).mockResolvedValue({
+        response: {
+          domain: "google.com",
+          zones: ["www.google.com"],
+          records: [{ name: "google.com", type: "A", ttl: "266", rData: { value: "142.251.37.142" } }],
+        },
+      })
+      const wrapper = await mountConnected()
+
+      await wrapper.get("#cache-domain").setValue("google.com")
+      await wrapper.get("form").trigger("submit")
+      await flushPromises()
+
+      expect(wrapper.text()).toContain("www.google.com")
+      expect(wrapper.text()).toContain("142.251.37.142")
+    })
+  })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 import { createRouter, createMemoryHistory } from "vue-router"
@@ -80,6 +80,10 @@ describe("OverviewView", () => {
     vi.mocked(getSettings).mockReset()
     vi.mocked(getTopStats).mockResolvedValue({ response: {} })
     vi.mocked(getSettings).mockResolvedValue({ response: {} as never })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("prompts to connect when no server is configured", async () => {
@@ -218,6 +222,36 @@ describe("OverviewView", () => {
       await flushPromises()
 
       expect(wrapper.find("#force-update-block-lists-error").text()).toBe("Permission denied.")
+    })
+  })
+
+  describe("Live toggle", () => {
+    it("polls the dashboard every 5 seconds while Live is on, and stops when toggled off", async () => {
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      const { wrapper } = await mountConnected()
+      await flushPromises()
+      vi.mocked(getDashboardStats).mockClear()
+      vi.useFakeTimers()
+
+      await wrapper.get("#overview-live-toggle").trigger("click")
+      await vi.advanceTimersByTimeAsync(5000)
+      await vi.advanceTimersByTimeAsync(5000)
+
+      expect(getDashboardStats).toHaveBeenCalledTimes(2)
+
+      await wrapper.get("#overview-live-toggle").trigger("click") // turn off
+      vi.mocked(getDashboardStats).mockClear()
+      await vi.advanceTimersByTimeAsync(10000)
+
+      expect(getDashboardStats).not.toHaveBeenCalled()
+    })
+
+    it("hides the Live toggle until a server is configured", async () => {
+      const router = makeRouter()
+      const wrapper = mount(OverviewView, { global: { plugins: [router] } })
+      await router.isReady()
+
+      expect(wrapper.find("#overview-live-toggle").exists()).toBe(false)
     })
   })
 })
