@@ -88,10 +88,24 @@ async function onTestConnection() {
       </p>
     </form>
 
-    <p class="mt-8 text-xs leading-relaxed text-gray-500">
-      Resolvr only calls read endpoints &mdash; dashboard stats, zone &amp; record listings, query
-      logs, cache, DHCP, apps and settings. It never creates, edits or deletes anything on your DNS
-      server.
-    </p>
+    <div class="mt-8 max-w-[62ch] text-xs leading-relaxed text-gray-500">
+      <p>
+        Almost everything Resolvr does is read-only &mdash; dashboard stats, zone &amp; record
+        listings, query logs, cache, DHCP, apps and settings. It never edits a zone or record on your
+        DNS server.
+      </p>
+      <p class="mt-2">
+        A short, explicit list of admin-only actions is the exception, each a single confirmed call to
+        one specific Technitium endpoint, never a general write:
+      </p>
+      <ul class="mt-1.5 list-disc space-y-0.5 pl-4">
+        <li>Flush the DNS cache</li>
+        <li>Force an immediate block-list update</li>
+        <li>Edit the block list source URLs, or block/unblock a specific domain</li>
+        <li>Revoke a session or API token</li>
+        <li>Uninstall a DNS app</li>
+      </ul>
+      <p class="mt-2">A Viewer account cannot do any of these &mdash; only read every monitoring page.</p>
+    </div>
   </main>
 </template>

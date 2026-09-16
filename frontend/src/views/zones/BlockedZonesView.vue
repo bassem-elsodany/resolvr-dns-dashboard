@@ -217,10 +217,12 @@ watch(
       blocked zones.
     </p>
 
-    <template v-else>
+    <p v-if="loadError" id="blocked-error" class="text-sm text-crit">{{ loadError }}</p>
+
+    <div v-if="connection.isConfigured" class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
       <div
         v-if="blockListLines.length > 0 || configLoadError || auth.isAdmin"
-        class="mb-4 rounded-lg border border-border bg-background-card p-3.5"
+        class="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-background-card p-3.5 lg:order-1"
       >
         <div class="mb-2 flex flex-wrap items-center gap-2">
           <div class="text-[12.5px] font-semibold">Block list sources</div>
@@ -303,29 +305,27 @@ watch(
           <p v-else-if="!configLoadError" class="text-[11.5px] text-gray-500">No block list feeds configured.</p>
         </template>
       </div>
-    </template>
 
-    <p v-if="loadError" id="blocked-error" class="text-sm text-crit">{{ loadError }}</p>
-
-    <div v-if="connection.isConfigured && !loadError" class="rounded-lg border border-border bg-background-card p-2">
-      <p class="px-1.5 pb-1.5 pt-1 text-[11px] text-gray-500">
-        Click a domain to expand it &mdash; each one may hold further blocked subdomains underneath.
-        <span class="rounded-md bg-crit/12 px-1.5 py-0.5 text-[10px] font-semibold text-crit">Blocked</span>
-        marks a domain that's actually denied, not just a grouping label.
-      </p>
-      <p v-if="filteredDomains.length === 0" class="px-1.5 py-4 text-center text-sm text-gray-500">
-        {{ loading ? "Loading…" : "No blocked zones." }}
-      </p>
-      <ul v-else id="blocked-zone-tree">
-        <ZoneTreeNode
-          v-for="domain in filteredDomains"
-          :key="domain"
-          :domain="domain"
-          :depth="0"
-          :fetch-node="fetchNode"
-          :delete-domain="deleteDomain"
-        />
-      </ul>
+      <div v-if="!loadError" class="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-background-card p-2 lg:order-2">
+        <p class="px-1.5 pb-1.5 pt-1 text-[11px] text-gray-500">
+          Click a domain to expand it &mdash; each one may hold further blocked subdomains underneath.
+          <span class="rounded-md bg-crit/12 px-1.5 py-0.5 text-[10px] font-semibold text-crit">Blocked</span>
+          marks a domain that's actually denied, not just a grouping label.
+        </p>
+        <p v-if="filteredDomains.length === 0" class="px-1.5 py-4 text-center text-sm text-gray-500">
+          {{ loading ? "Loading…" : "No blocked zones." }}
+        </p>
+        <ul v-else id="blocked-zone-tree">
+          <ZoneTreeNode
+            v-for="domain in filteredDomains"
+            :key="domain"
+            :domain="domain"
+            :depth="0"
+            :fetch-node="fetchNode"
+            :delete-domain="deleteDomain"
+          />
+        </ul>
+      </div>
     </div>
   </div>
 </template>
