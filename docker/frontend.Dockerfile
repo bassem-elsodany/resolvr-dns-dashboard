@@ -9,6 +9,10 @@ WORKDIR /app
 # correct for the common single-host deployment regardless of whether
 # it's reached via localhost, a LAN IP, or a hostname — set this only
 # for a split-host setup where the backend lives somewhere else.
+# For a deployment behind a reverse proxy (a different backend address
+# per environment, decided after this image is already built), set the
+# BACKEND_URL *container* environment variable instead — see
+# docker-entrypoint.sh — rather than rebuilding with this build arg.
 ARG VITE_BACKEND_URL=
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
@@ -20,4 +24,8 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]

@@ -47,6 +47,14 @@ services:
       # a split-host setup where the backend lives somewhere else.
     ports:
       - "8080:80"
+    environment:
+      # Unset by default (falls back to the behavior above). Set this
+      # instead if you're putting this app behind your own reverse
+      # proxy that forwards /api somewhere other than "this address,
+      # port 8787" — e.g. to the backend on the same public origin, no
+      # port. Unlike VITE_BACKEND_URL, this is read at container start,
+      # so it works with the pre-built image too, no rebuild needed.
+      # - BACKEND_URL=https://resolvr.example.com
     depends_on:
       - backend
     restart: unless-stopped
