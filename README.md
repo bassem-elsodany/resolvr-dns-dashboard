@@ -116,6 +116,15 @@ Set these under the `backend` service (in `docker/docker-compose.yml`, or the pr
 
 The frontend image also takes a build argument, `VITE_BACKEND_URL`, left unset by default — the app then targets whatever host served the page, on port 8787, at runtime in the browser. Set it explicitly only for a split-host setup where the backend isn't reachable at that address (it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time).
 
+If you're instead putting the frontend behind your own reverse proxy — one that forwards `/api` to the backend somewhere other than "this address, port 8787" (e.g. to the backend on the same public origin, no port) — set the `BACKEND_URL` *container* environment variable on the `frontend` service instead:
+
+```yaml
+    environment:
+      - BACKEND_URL=https://resolvr.example.com
+```
+
+Unlike `VITE_BACKEND_URL`, this is read at container start (see `docker/docker-entrypoint.sh`), so it works with the pre-built image too — no rebuild needed, and it can differ per deployment.
+
 ### Option 3: Standalone (without Docker)
 
 Useful for local development, or if you'd rather run the two services with your own process manager (systemd, pm2, etc.) than with Docker.
