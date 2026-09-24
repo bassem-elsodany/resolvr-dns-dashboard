@@ -21,6 +21,14 @@ services:
     pull_policy: always
     ports:
       - "8080:80"
+    environment:
+      # Unset by default: the app targets whatever host served the
+      # page, on port 8787. Set this instead if you're putting this
+      # app behind your own reverse proxy that forwards /api somewhere
+      # other than that — e.g. to the backend on the same public
+      # origin, no port. Read at container start, so it works with
+      # this pre-built image too, no rebuild needed.
+      # - BACKEND_URL=https://resolvr.example.com
     depends_on:
       - backend
     restart: unless-stopped
