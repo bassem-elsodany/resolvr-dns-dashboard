@@ -33,6 +33,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       # arm64 (Raspberry Pi and friends) isn't the runner's native arch —
       # QEMU lets buildx cross-build it here instead of needing a
