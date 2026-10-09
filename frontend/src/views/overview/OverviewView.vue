@@ -97,7 +97,7 @@ async function onForceUpdateBlockLists(): Promise<void> {
   }
 }
 
-const { liveOn, toggle: toggleLive } = useLivePolling(() => load())
+const { liveOn, toggle: toggleLive } = useLivePolling(() => load(), 5000, "overview")
 
 onMounted(load)
 watch(() => timeRange.selected, load)
