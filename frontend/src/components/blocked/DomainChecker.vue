@@ -4,7 +4,11 @@ import { resolveDnsQuery, TechnitiumApiError } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { isValidDomain, normalizeDomain, parseVerdict, type Verdict } from "../../lib/blockLists"
 
-const emit = defineEmits<{ (e: "matched", match: { feed: string | null; domain: string | null }): void }>()
+const emit = defineEmits<{
+  (e: "matched", match: { feed: string | null; domain: string | null }): void
+  // Asks the page to bring forward the tab that holds what matched.
+  (e: "show", tab: "feeds" | "domains"): void
+}>()
 const connection = useConnectionStore()
 
 const input = ref("")
@@ -64,8 +68,11 @@ async function check(): Promise<void> {
         <b>Blocked.</b>{{ " " }}
         <template v-if="verdict.source === 'feed'">
           <span class="break-words">{{ checkedName }} matches a feed<template v-if="verdict.feedUrl">: <span class="font-mono">{{ verdict.feedUrl }}</span></template>.</span>
+          <button v-if="verdict.feedUrl" id="show-feed" type="button" class="ml-2 font-semibold underline" @click="emit('show', 'feeds')">Show in Feeds</button>
         </template>
-        <template v-else-if="verdict.source === 'own'">{{ checkedName }} is on your blocked domains<template v-if="verdict.matched && verdict.matched !== checkedName"> (through {{ verdict.matched }})</template>.</template>
+        <template v-else-if="verdict.source === 'own'">{{ checkedName }} is on your blocked domains<template v-if="verdict.matched && verdict.matched !== checkedName"> (through {{ verdict.matched }})</template>.
+          <button id="show-domain" type="button" class="ml-2 font-semibold underline" @click="emit('show', 'domains')">Show in your domains</button>
+        </template>
         <template v-else>The server refused {{ checkedName }}: <span class="font-mono">{{ verdict.detail }}</span></template>
       </template>
       <template v-else-if="verdict.kind === 'allowed'">

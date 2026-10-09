@@ -6,6 +6,8 @@ import { useAuthStore } from "../../stores/auth"
 import { getDashboardStats, getSettings, TechnitiumApiError } from "../../api/technitium"
 import { updateBlockListUrls, AppApiError } from "../../api/app"
 import { useUndoToast } from "../../composables/useUndoToast"
+import { useRouteTab } from "../../composables/useRouteTab"
+import TabBar from "../../components/ui/TabBar.vue"
 import BlockListStatus from "../../components/blocked/BlockListStatus.vue"
 import BlockListFeeds from "../../components/blocked/BlockListFeeds.vue"
 import BlockedDomains from "../../components/blocked/BlockedDomains.vue"
@@ -107,6 +109,18 @@ function onMatched(m: { feed: string | null; domain: string | null }): void {
 }
 
 const hasUnsavedFeeds = computed(() => Boolean(feedsRef.value?.hasChanges))
+
+// ---------- tabs ----------
+
+// The status card stays on top; what you manage sits in tabs beneath it.
+// Feeds stays mounted when hidden, so an unfinished edit survives a visit
+// to another tab, and the tab says so.
+const tabs = computed(() => [
+  { id: "feeds", label: "Feeds", flag: hasUnsavedFeeds.value ? "Unsaved changes" : null },
+  { id: "domains", label: "Your domains" },
+  { id: "check", label: "Check a domain" },
+] as const)
+const { tab, setTab } = useRouteTab(["feeds", "domains", "check"] as const, "resolvr.blockedTab", "feeds")
 </script>
 
 <template>
@@ -136,17 +150,21 @@ const hasUnsavedFeeds = computed(() => Boolean(feedsRef.value?.hasChanges))
         :fetch-status="fetchStatus"
         @updated="load"
       />
-      <BlockListFeeds
-        ref="feedsRef"
-        :lines="lines"
-        :is-admin="auth.isAdmin"
-        :saving="saving"
-        :save-error="saveError"
-        :highlight-url="highlightFeed"
-        @save="onSave"
-      />
-      <BlockedDomains :is-admin="auth.isAdmin" :highlight-domain="highlightDomain" />
-      <DomainChecker @matched="onMatched" />
+      <TabBar :tabs="tabs" :model-value="tab" id-prefix="blocked-tab" panel-id="blocked-tabpanel" label="Blocked zone sections" class="self-start !mb-0" @update:model-value="setTab" />
+      <div id="blocked-tabpanel" role="tabpanel" :aria-labelledby="`blocked-tab-${tab}`">
+        <BlockListFeeds
+          v-show="tab === 'feeds'"
+          ref="feedsRef"
+          :lines="lines"
+          :is-admin="auth.isAdmin"
+          :saving="saving"
+          :save-error="saveError"
+          :highlight-url="highlightFeed"
+          @save="onSave"
+        />
+        <BlockedDomains v-if="tab === 'domains'" :is-admin="auth.isAdmin" :highlight-domain="highlightDomain" />
+        <DomainChecker v-if="tab === 'check'" @matched="onMatched" @show="setTab" />
+      </div>
     </template>
     <UndoToast :toast="toast" @undo="runUndo" />
   </div>

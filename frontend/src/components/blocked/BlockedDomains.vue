@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, nextTick, onMounted, ref, watch } from "vue"
 import { exportBlockedZones, listBlockedZones, TechnitiumApiError } from "../../api/technitium"
 import { blockDomain, unblockDomain, AppApiError } from "../../api/app"
 import { useConnectionStore } from "../../stores/connection"
@@ -59,6 +59,17 @@ watch(() => connection.isConfigured, (c) => c && void load())
 function remember(): void {
   void cached<WalkResult>(CACHE_KEY, TTL_MS, async () => ({ domains: domains.value, truncated: truncated.value }), true)
 }
+
+// Bring a highlighted domain (one a check matched) into view once listed.
+watch(
+  [() => state.value, () => props.highlightDomain],
+  async ([s, d]) => {
+    if (s !== "ready" || !d) return
+    await nextTick()
+    document.querySelector(".blocked-row.bg-accent\\/15")?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+  },
+  { immediate: true },
+)
 
 const blockedSet = computed(() => new Set(domains.value))
 

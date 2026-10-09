@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { mount, flushPromises } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
+import { createRouter, createMemoryHistory } from "vue-router"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
@@ -63,8 +64,21 @@ function mockServer() {
   vi.mocked(forceUpdateBlockLists).mockResolvedValue({ status: "ok" })
 }
 
-async function mountPage(role: "admin" | "viewer" = "admin") {
-  const wrapper = mount(BlockedZonesView, { global: { stubs: { RouterLink: true } }, attachTo: document.body })
+async function makeRouter(path = "/blocked") {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/blocked", component: BlockedZonesView },
+      { path: "/connect", component: { template: "<div />" } },
+    ],
+  })
+  await router.push(path)
+  return router
+}
+
+async function mountPage(role: "admin" | "viewer" = "admin", tab?: "feeds" | "domains" | "check") {
+  const router = await makeRouter(tab ? `/blocked?tab=${tab}` : "/blocked")
+  const wrapper = mount(BlockedZonesView, { global: { plugins: [router] }, attachTo: document.body })
   useAuthStore().user = { id: 1, username: role, role }
   useConnectionStore().isConfigured = true
   await flushPromises()
@@ -89,10 +103,78 @@ describe("BlockedZonesView", () => {
   })
 
   it("prompts to connect when no server is configured", async () => {
-    const wrapper = mount(BlockedZonesView, { global: { stubs: { RouterLink: true } } })
+    const wrapper = mount(BlockedZonesView, { global: { plugins: [await makeRouter()], stubs: { RouterLink: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain("Connect to a Technitium server")
     expect(getSettings).not.toHaveBeenCalled()
+  })
+
+  describe("tabs", () => {
+    it("keeps the status card on top and opens on Feeds", async () => {
+      const w = await mountPage()
+      expect(w.findAll('[role="tab"]').map((t) => t.text())).toEqual(["Feeds", "Your domains", "Check a domain"])
+      expect(w.get("#blocked-tab-feeds").attributes("aria-selected")).toBe("true")
+      expect(w.find("#status-total").exists()).toBe(true)
+      expect(w.find("#new-feed-url").isVisible()).toBe(true)
+      expect(w.find("#new-blocked-domain").exists()).toBe(false)
+      expect(w.find("#check-domain").exists()).toBe(false)
+    })
+
+    it("shows only the chosen section, records it in the URL, and keeps the status card", async () => {
+      const w = await mountPage()
+      await w.get("#blocked-tab-domains").trigger("click")
+      await flushPromises()
+      expect(w.vm.$route.query.tab).toBe("domains")
+      expect(w.find("#new-blocked-domain").exists()).toBe(true)
+      expect(w.get("#new-feed-url").isVisible()).toBe(false)
+      expect(w.find("#status-total").exists()).toBe(true)
+    })
+
+    it("opens on the tab named in the URL, and remembers the last one used", async () => {
+      const named = await mountPage("admin", "check")
+      expect(named.find("#check-domain").exists()).toBe(true)
+      named.unmount()
+
+      const first = await mountPage()
+      await first.get("#blocked-tab-domains").trigger("click")
+      await flushPromises()
+      first.unmount()
+
+      const w = await mountPage()
+      expect(w.get("#blocked-tab-domains").attributes("aria-selected")).toBe("true")
+    })
+
+    it("only reads the blocked-domain tree once the Your domains tab is opened", async () => {
+      const w = await mountPage()
+      expect(listBlockedZones).not.toHaveBeenCalled()
+      await w.get("#blocked-tab-domains").trigger("click")
+      await flushPromises()
+      expect(listBlockedZones).toHaveBeenCalled()
+    })
+
+    it("flags the Feeds tab while edits are unsaved, and keeps them when you look at another tab", async () => {
+      const w = await mountPage()
+      expect(w.find(".tab-flag").exists()).toBe(false)
+      await w.findAll(".feed-remove")[0]!.trigger("click")
+      expect(w.get("#blocked-tab-feeds .tab-flag").attributes("title")).toBe("Unsaved changes")
+
+      await w.get("#blocked-tab-domains").trigger("click")
+      await flushPromises()
+      expect(w.find("#blocked-tab-feeds .tab-flag").exists()).toBe(true)
+      await w.get("#blocked-tab-feeds").trigger("click")
+      await flushPromises()
+      expect(w.findAll(".feed-row")[0]!.text()).toContain("Removing")
+    })
+
+    it("moves between tabs with the arrow keys", async () => {
+      const w = await mountPage()
+      await w.get("#blocked-tab-feeds").trigger("keydown", { key: "ArrowRight" })
+      await flushPromises()
+      expect(w.get("#blocked-tab-domains").attributes("aria-selected")).toBe("true")
+      await w.get("#blocked-tab-domains").trigger("keydown", { key: "End" })
+      await flushPromises()
+      expect(w.get("#blocked-tab-check").attributes("aria-selected")).toBe("true")
+    })
   })
 
   describe("status", () => {
@@ -239,20 +321,20 @@ describe("BlockedZonesView", () => {
 
   describe("your blocked domains", () => {
     it("lists every blocked domain found by walking the tree, not just the root labels", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       expect(w.findAll(".blocked-row").map((r) => r.find("span").text())).toEqual(["ads.example.net", "example.com"])
       expect(w.get("#blocked-count").text()).toBe("2 of 2")
     })
 
     it("filters the list", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#blocked-filter").setValue("ads")
       expect(w.findAll(".blocked-row")).toHaveLength(1)
       expect(w.get("#blocked-count").text()).toBe("1 of 2")
     })
 
     it("says whether a typed domain is new, already blocked, covered by a parent, or invalid", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       const hint = () => w.get("#domain-hint").text()
       await w.get("#new-blocked-domain").setValue("nope")
       expect(hint()).toContain("not a valid domain")
@@ -268,7 +350,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("blocks a new domain, shows it in the list, and can undo", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#new-blocked-domain").setValue("New.Example.org")
       await w.get("#add-blocked-domain").trigger("click")
       await flushPromises()
@@ -284,7 +366,7 @@ describe("BlockedZonesView", () => {
 
     it("shows a readable error, not a raw stack trace, when blocking fails", async () => {
       vi.mocked(blockDomain).mockRejectedValue(new AppApiError("Permission denied.", 502))
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#new-blocked-domain").setValue("new.example.org")
       await w.get("#add-blocked-domain").trigger("click")
       await flushPromises()
@@ -292,7 +374,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("unblocks from the list and can bring it back", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.findAll(".row-unblock")[0]!.trigger("click") // ads.example.net
       await flushPromises()
       expect(unblockDomain).toHaveBeenCalledWith("ads.example.net")
@@ -305,7 +387,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("blocks a pasted list, skipping what is already covered or invalid", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#bulk-toggle").trigger("click")
       await w.get("#bulk-text").setValue("a.example.org\nb.example.org\nx.ads.example.net\nnot valid")
       expect(w.get("#bulk-summary").text()).toContain("2 new, 1 already blocked, 2 not valid")
@@ -321,7 +403,7 @@ describe("BlockedZonesView", () => {
         if (d === "b.example.org") throw new AppApiError("no", 502)
         return { status: "ok" }
       }) as never)
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#bulk-toggle").trigger("click")
       await w.get("#bulk-text").setValue("a.example.org\nb.example.org")
       await w.get("#bulk-block").trigger("click")
@@ -330,7 +412,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("hides the controls from a viewer but still lists the domains", async () => {
-      const w = await mountPage("viewer")
+      const w = await mountPage("viewer", "domains")
       expect(w.find("#new-blocked-domain").exists()).toBe(false)
       expect(w.find(".row-unblock").exists()).toBe(false)
       expect(w.findAll(".blocked-row")).toHaveLength(2)
@@ -340,7 +422,7 @@ describe("BlockedZonesView", () => {
     it("exports the blocked zones as a download", async () => {
       const file = { blob: new Blob(["x"]), filename: "blocked.txt" }
       vi.mocked(exportBlockedZones).mockResolvedValue(file as never)
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       await w.get("#export-blocked").trigger("click")
       await flushPromises()
       expect(triggerDownload).toHaveBeenCalledWith(file)
@@ -348,18 +430,18 @@ describe("BlockedZonesView", () => {
 
     it("shows an error when the tree cannot be read, and an empty state when nothing is blocked", async () => {
       vi.mocked(listBlockedZones).mockRejectedValue(new TechnitiumApiError("Server unreachable.", 502))
-      const bad = await mountPage()
+      const bad = await mountPage("admin", "domains")
       expect(bad.get("#blocked-error").text()).toBe("Server unreachable.")
       bad.unmount()
 
       clearCache()
       vi.mocked(listBlockedZones).mockResolvedValue({ response: { domain: "", zones: [], records: [] } } as never)
-      const empty = await mountPage()
+      const empty = await mountPage("admin", "domains")
       expect(empty.text()).toContain("You have not blocked any domains yet")
     })
 
     it("can still browse the tree", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       const details = w.get("details")
       ;(details.element as HTMLDetailsElement).open = true
       await details.trigger("toggle")
@@ -369,7 +451,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("refetches everything when the topbar refresh button is used", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "domains")
       vi.mocked(getSettings).mockClear()
       vi.mocked(listBlockedZones).mockClear()
       useRefreshStore().trigger()
@@ -386,28 +468,35 @@ describe("BlockedZonesView", () => {
 
     it("names the feed that blocked a domain, and points at it in the feeds list", async () => {
       vi.mocked(resolveDnsQuery).mockResolvedValue(blockedBy("source=block-list-zone; blockListUrl=https://b.example.org/ads.txt; domain=ads.example.net"))
-      const w = await mountPage()
+      const w = await mountPage("admin", "check")
       await w.get("#check-domain").setValue("ads.example.net")
       await w.get("#check-go").trigger("click")
       await flushPromises()
       expect(resolveDnsQuery).toHaveBeenCalledWith("ads.example.net", "A", expect.anything(), expect.objectContaining({ server: "this-server" }))
       expect(w.get("#check-verdict").text()).toContain("matches a feed: https://b.example.org/ads.txt")
+      await w.get("#show-feed").trigger("click")
+      await flushPromises()
+      expect(w.get("#blocked-tab-feeds").attributes("aria-selected")).toBe("true")
       const matched = w.findAll(".feed-row").find((r) => r.text().includes("b.example.org"))!
       expect(matched.text()).toContain("Matched")
     })
 
     it("says a name on your own list is blocked, and highlights it", async () => {
       vi.mocked(resolveDnsQuery).mockResolvedValue(blockedBy("source=blocked-zone; domain=example.com"))
-      const w = await mountPage()
+      const w = await mountPage("admin", "check")
       await w.get("#check-domain").setValue("www.example.com")
       await w.get("#check-go").trigger("click")
       await flushPromises()
       expect(w.get("#check-verdict").text()).toContain("is on your blocked domains (through example.com)")
+      await w.get("#show-domain").trigger("click")
+      await flushPromises()
+      expect(w.get("#blocked-tab-domains").attributes("aria-selected")).toBe("true")
+      expect(w.find("#blocked-domain-list").exists()).toBe(true)
     })
 
     it("reports an allowed name with its addresses, and a name that does not exist", async () => {
       vi.mocked(resolveDnsQuery).mockResolvedValue({ response: { result: { RCODE: "NoError", Answer: [{ RDATA: { IPAddress: "192.0.2.1" } }], EDNS: { Options: [] } } } } as never)
-      const w = await mountPage()
+      const w = await mountPage("admin", "check")
       await w.get("#check-domain").setValue("www.example.org")
       await w.get("#check-go").trigger("click")
       await flushPromises()
@@ -420,7 +509,7 @@ describe("BlockedZonesView", () => {
     })
 
     it("asks for a real domain, and shows a readable error when the server cannot be asked", async () => {
-      const w = await mountPage()
+      const w = await mountPage("admin", "check")
       await w.get("#check-domain").setValue("nope")
       await w.get("#check-go").trigger("click")
       expect(w.get("#check-message").text()).toContain("Enter a domain")
