@@ -148,7 +148,9 @@ docker compose -f docker-compose.single.yml up -d
 
 Open `http://<this-machine>:8080` and sign in with the account in the file (change the passwords). The image is `ghcr.io/bassem-elsodany/resolvr` (amd64 and arm64), tagged with each release version.
 
-When Resolvr runs as a Home Assistant add-on it needs no login: Home Assistant already signed you in, and the Technitium address and API token are set in the add-on's Configuration tab.
+### Home Assistant add-on
+
+Resolvr also runs as a Home Assistant add-on, in the sidebar. It uses your Home Assistant sign-in, so there is no separate login, and the Technitium address and API token are set in the add-on's Configuration tab. Add `https://github.com/bassem-elsodany/homelab-ha-addons` as an add-on repository (Settings → Add-ons → Add-on Store → ⋮ → Repositories), then install **Resolvr**. See the [add-on documentation](https://github.com/bassem-elsodany/homelab-ha-addons/blob/main/resolvr/DOCS.md).
 
 ### Option 4: Standalone (without Docker)
 
