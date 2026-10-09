@@ -35,6 +35,15 @@
   --color-crit: 196 58 58;
   --color-info: 99 91 214; /* violet — "recursive" */
   --color-cache: 11 137 158; /* teal — "cached" */
+  /* Chart categorical slots — validated for colour-blind separation and
+   * contrast on the card surface in both themes. Colour follows the
+   * entity (blocked is always red, cached always aqua), never its rank. */
+  --color-chart-blue: 42 120 214;
+  --color-chart-aqua: 27 175 122;
+  --color-chart-violet: 74 58 167;
+  --color-chart-red: 227 73 72;
+  --color-chart-orange: 235 104 52;
+  --color-chart-gray: 137 135 129;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -60,6 +69,12 @@
     --color-crit: 235 111 111;
     --color-info: 146 138 240;
     --color-cache: 56 190 209;
+  --color-chart-blue: 57 135 229;
+  --color-chart-aqua: 25 158 112;
+  --color-chart-violet: 144 133 233;
+  --color-chart-red: 230 103 103;
+  --color-chart-orange: 217 89 38;
+  --color-chart-gray: 137 135 129;
   }
 }
 
@@ -85,6 +100,12 @@
   --color-crit: 235 111 111;
   --color-info: 146 138 240;
   --color-cache: 56 190 209;
+  --color-chart-blue: 57 135 229;
+  --color-chart-aqua: 25 158 112;
+  --color-chart-violet: 144 133 233;
+  --color-chart-red: 230 103 103;
+  --color-chart-orange: 217 89 38;
+  --color-chart-gray: 137 135 129;
 }
 
 ::-webkit-scrollbar {
