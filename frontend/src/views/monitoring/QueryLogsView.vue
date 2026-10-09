@@ -36,6 +36,10 @@ const filters = reactive({
   protocol: "",
   rcode: "",
   qtype: "",
+  // Time window, set by dragging a selection on Overview's chart. Not a
+  // form field: it is shown as a removable chip instead.
+  start: "",
+  end: "",
 })
 const pageNumber = ref(1)
 
@@ -69,7 +73,25 @@ function activeFilters() {
   if (filters.protocol) f.protocol = filters.protocol
   if (filters.rcode) f.rcode = filters.rcode
   if (filters.qtype) f.qtype = filters.qtype
+  if (filters.start && filters.end) {
+    f.start = filters.start
+    f.end = filters.end
+  }
   return f
+}
+
+const hasWindow = computed(() => Boolean(filters.start && filters.end))
+const windowLabel = computed(() => {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  return `${fmt(filters.start)} to ${fmt(filters.end)}`
+})
+
+function clearWindow(): void {
+  filters.start = ""
+  filters.end = ""
+  pageNumber.value = 1
+  void loadTable()
 }
 
 async function loadTable(): Promise<void> {
@@ -178,8 +200,25 @@ function filterByClient(ip: string): void {
 // Overview and by ClientsView's client links — so arriving here from
 // elsewhere in the app lands pre-filtered instead of dumping the user
 // on an unfiltered 10,000-row table they have to re-filter by hand.
+//
+// Overview's charts also link here with ?responseType=, ?rcode=,
+// ?qtype= and a ?start=&end= window. When any of those is present the
+// whole set is taken from the URL, so a second click-through from the
+// charts replaces the previous filters instead of stacking on them.
+const CHART_FILTER_KEYS = ["responseType", "rcode", "qtype", "start", "end"] as const
+
+function applyChartFilters(): void {
+  if (!CHART_FILTER_KEYS.some((k) => k in route.query)) return
+  for (const key of CHART_FILTER_KEYS) {
+    const v = route.query[key]
+    filters[key] = typeof v === "string" ? v : ""
+  }
+  pageNumber.value = 1
+}
+
 function applyRouteQuery(): void {
   if (!connection.isConfigured) return
+  applyChartFilters()
   const qClient = route.query.client
   const qQname = route.query.qname
   if (typeof qClient === "string" && qClient) {
@@ -315,6 +354,16 @@ watch(() => refresh.tick, loadTable)
           </div>
         </div>
 
+        <div v-if="hasWindow" class="mb-2 flex items-center gap-2">
+          <span
+            id="window-chip"
+            class="inline-flex items-center gap-1.5 rounded-full border border-accent bg-accent/10 px-2.5 py-1 text-[11.5px] font-semibold text-accent"
+          >
+            Window: {{ windowLabel }}
+            <button type="button" aria-label="Clear time window" class="text-accent" @click="clearWindow">&times;</button>
+          </span>
+        </div>
+
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
           <div class="flex flex-col gap-1">
             <label for="filter-client" class="text-[11px] font-semibold text-gray-500">Client IP</label>
@@ -403,6 +452,8 @@ watch(() => refresh.tick, loadTable)
               <option value="PTR">PTR</option>
               <option value="SRV">SRV</option>
               <option value="CAA">CAA</option>
+              <option value="HTTPS">HTTPS</option>
+              <option value="SVCB">SVCB</option>
               <option value="ANY">ANY</option>
             </select>
           </div>

@@ -168,7 +168,7 @@ describe("QueryLogsView", () => {
     const select = wrapper.get("#filter-qtype")
     expect(select.element.tagName).toBe("SELECT")
     const options = select.findAll("option").map((o) => o.attributes("value"))
-    expect(options).toEqual(["", "A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "PTR", "SRV", "CAA", "ANY"])
+    expect(options).toEqual(["", "A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "PTR", "SRV", "CAA", "HTTPS", "SVCB", "ANY"])
   })
 
   it("filters the table by record type when the Record type dropdown changes", async () => {
@@ -384,6 +384,41 @@ describe("QueryLogsView", () => {
       expect.anything(),
       expect.objectContaining({ qname: "sessions.bugsnag.com" }),
     )
+  })
+
+  it("pre-filters by response type, rcode and record type from the chart links", async () => {
+    const router = makeRouter()
+    await router.push("/logs?responseType=Cached&rcode=NxDomain&qtype=AAAA")
+    mount(QueryLogsView, { global: { plugins: [router] } })
+    useConnectionStore().isConfigured = true
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ responseType: "Cached", rcode: "NxDomain", qtype: "AAAA" }),
+    )
+  })
+
+  it("applies a ?start=&end= window from the Overview chart and lets the user clear it", async () => {
+    const router = makeRouter()
+    await router.push("/logs?start=2026-10-09T10:00:00.000Z&end=2026-10-09T12:00:00.000Z")
+    const wrapper = mount(QueryLogsView, { global: { plugins: [router] } })
+    useConnectionStore().isConfigured = true
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ start: "2026-10-09T10:00:00.000Z", end: "2026-10-09T12:00:00.000Z" }),
+    )
+    expect(wrapper.find("#window-chip").exists()).toBe(true)
+
+    await wrapper.get("#window-chip button").trigger("click")
+    await flushPromises()
+    expect(wrapper.find("#window-chip").exists()).toBe(false)
+    const lastFilters = vi.mocked(queryLogs).mock.calls.at(-1)![2]
+    expect(lastFilters).not.toHaveProperty("start")
   })
 
   it("shows the host-insight graphs when a client IP is typed directly into the filter, not only via a host chip", async () => {
