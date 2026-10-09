@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { ref, computed, onMounted, watch } from "vue"
+import { useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
@@ -15,6 +15,8 @@ import {
 } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import { useLivePolling } from "../../composables/useLivePolling"
+import { useRouteTab } from "../../composables/useRouteTab"
+import TabBar from "../../components/ui/TabBar.vue"
 import { usePreviousStats } from "../../composables/usePreviousStats"
 import { useLogSample } from "../../composables/useLogSample"
 import TrendTiles from "../../components/overview/TrendTiles.vue"
@@ -34,7 +36,6 @@ import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
 const router = useRouter()
-const route = useRoute()
 const auth = useAuthStore()
 // Time range is a single global control in the topbar (AppShell.vue),
 // not a per-page copy — the wireframe puts it there once and Overview
@@ -82,39 +83,7 @@ const TABS = [
   { id: "top", label: "Top lists" },
   { id: "infra", label: "Infrastructure" },
 ] as const
-type TabId = (typeof TABS)[number]["id"]
-const TAB_KEY = "resolvr.overviewTab"
-
-function storedTab(): TabId | null {
-  try {
-    const v = localStorage.getItem(TAB_KEY)
-    return TABS.find((t) => t.id === v)?.id ?? null
-  } catch {
-    return null
-  }
-}
-
-const tab = computed<TabId>(() => TABS.find((t) => t.id === route.query.tab)?.id ?? storedTab() ?? "traffic")
-
-function setTab(id: TabId): void {
-  try {
-    localStorage.setItem(TAB_KEY, id)
-  } catch {
-    // Not remembered; the URL still carries the choice.
-  }
-  void router.replace({ query: { ...route.query, tab: id } })
-}
-
-// Left/Right/Home/End move between tabs, as for any tab list.
-function onTabKey(e: KeyboardEvent): void {
-  const i = TABS.findIndex((t) => t.id === tab.value)
-  const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key]
-  if (next === undefined) return
-  e.preventDefault()
-  const target = TABS[(next + TABS.length) % TABS.length]!.id
-  setTab(target)
-  void nextTick(() => document.getElementById(`overview-tab-${target}`)?.focus())
-}
+const { tab, setTab } = useRouteTab(TABS.map((t) => t.id), "resolvr.overviewTab", "traffic")
 
 // The response-time and flow panels read a shared sample of the latest
 // logged queries (see useLogSample for how it is cached).
@@ -310,32 +279,7 @@ watch(
 
       <TrendTiles :stats="stats.stats" :prev="prevStats" :chart="stats.mainChartData" :duration="timeRange.selected" class="mb-3.5" />
 
-      <div
-        role="tablist"
-        aria-label="Overview sections"
-        class="mb-4 flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-background-card p-1.5 sm:inline-flex"
-        @keydown="onTabKey"
-      >
-        <button
-          v-for="t in TABS"
-          :id="`overview-tab-${t.id}`"
-          :key="t.id"
-          type="button"
-          role="tab"
-          :aria-selected="tab === t.id"
-          aria-controls="overview-tabpanel"
-          :tabindex="tab === t.id ? 0 : -1"
-          class="overview-tab whitespace-nowrap rounded-lg px-4 py-2 text-sm transition-colors"
-          :class="
-            tab === t.id
-              ? 'bg-accent/15 font-semibold text-accent shadow-[inset_0_0_0_1px_rgb(var(--color-accent)/0.45)]'
-              : 'font-medium text-gray-400 hover:bg-background-hover hover:text-fg'
-          "
-          @click="setTab(t.id)"
-        >
-          {{ t.label }}
-        </button>
-      </div>
+      <TabBar :tabs="TABS" :model-value="tab" id-prefix="overview-tab" panel-id="overview-tabpanel" label="Overview sections" @update:model-value="setTab" />
 
       <div id="overview-tabpanel" role="tabpanel" :aria-labelledby="`overview-tab-${tab}`">
         <div v-if="tab === 'traffic'" class="flex flex-col gap-3.5">
