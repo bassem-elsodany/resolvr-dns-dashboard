@@ -386,6 +386,20 @@ describe("QueryLogsView", () => {
     )
   })
 
+  it("combines a client with a domain or record type, as linked from a client's detail panel", async () => {
+    const router = makeRouter()
+    await router.push("/logs?client=10.0.10.30&qname=cdn.example.com&qtype=AAAA")
+    mount(QueryLogsView, { global: { plugins: [router] } })
+    useConnectionStore().isConfigured = true
+    await flushPromises()
+
+    expect(queryLogs).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ clientIpAddress: "10.0.10.30", qname: "cdn.example.com", qtype: "AAAA" }),
+    )
+  })
+
   it("pre-filters by response type, rcode and record type from the chart links", async () => {
     const router = makeRouter()
     await router.push("/logs?responseType=Cached&rcode=NxDomain&qtype=AAAA")
