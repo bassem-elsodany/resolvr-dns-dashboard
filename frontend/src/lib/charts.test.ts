@@ -149,3 +149,109 @@ describe("pct", () => {
     expect(pct(1, 4)).toBe("25.0%")
   })
 })
+
+import { lastOccurrence, buildFlows, pathOf, outcomeOf, ipv4ToInt, scopeSize, groupZoneTypes, cached, clearCache } from "./charts"
+
+describe("lastOccurrence", () => {
+  it("finds the most recent matching weekday and hour, never in the future", () => {
+    // Fri 9 Oct 2026, 10:30 local.
+    const now = new Date(2026, 9, 9, 10, 30)
+    const fri9 = lastOccurrence(4, 9, now)
+    expect(new Date(fri9.start).getDate()).toBe(9)
+    // Friday 11:00 has not happened yet today, so it is last week's.
+    const fri11 = lastOccurrence(4, 11, now)
+    expect(new Date(fri11.start).getDate()).toBe(2)
+    const mon = lastOccurrence(0, 8, now)
+    expect(new Date(mon.start).getDate()).toBe(5)
+    expect(new Date(mon.end).getTime() - new Date(mon.start).getTime()).toBe(3600_000)
+  })
+})
+
+describe("flows", () => {
+  it("merges the three blocking flavours into one path and one outcome", () => {
+    expect(pathOf("CacheBlocked")).toBe("Blocked")
+    expect(pathOf("UpstreamBlocked")).toBe("Blocked")
+    expect(pathOf("Cached")).toBe("Cached")
+    expect(pathOf("Weird")).toBe("Other")
+    expect(outcomeOf("Blocked", "NoError")).toBe("Blocked reply")
+    expect(outcomeOf("Recursive", "NxDomain")).toBe("NXDomain")
+  })
+
+  it("counts path to outcome and drops empty nodes", () => {
+    const f = buildFlows([
+      { responseType: "Cached", rcode: "NoError" },
+      { responseType: "Cached", rcode: "NoError" },
+      { responseType: "Cached", rcode: "NxDomain" },
+      { responseType: "Blocked", rcode: "NoError" },
+    ])
+    expect(f.total).toBe(4)
+    expect(f.paths).toEqual([
+      { name: "Cached", value: 3 },
+      { name: "Blocked", value: 1 },
+    ])
+    expect(f.outcomes.map((o) => o.name)).toEqual(["No error", "NXDomain", "Blocked reply"])
+    expect(f.links.reduce((a, l) => a + l[2], 0)).toBe(4)
+    expect(f.links[0]).toEqual([0, 0, 2])
+  })
+
+  it("has no nodes for an empty sample", () => {
+    expect(buildFlows([]).paths).toEqual([])
+  })
+})
+
+describe("DHCP scope size", () => {
+  it("counts the addresses in an IPv4 range, inclusive", () => {
+    expect(ipv4ToInt("0.0.1.0")).toBe(256)
+    expect(scopeSize("192.168.1.1", "192.168.1.254")).toBe(254)
+    expect(scopeSize("10.0.0.1", "10.0.1.0")).toBe(256)
+  })
+
+  it("rejects anything that is not a plain IPv4 range", () => {
+    expect(scopeSize("fe80::1", "fe80::ff")).toBeNull()
+    expect(scopeSize("10.0.0.9", "10.0.0.1")).toBeNull()
+    expect(ipv4ToInt("300.1.1.1")).toBeNull()
+  })
+})
+
+describe("groupZoneTypes", () => {
+  it("counts by type, skipping built-in zones, biggest first, unknown types as Other", () => {
+    const g = groupZoneTypes([
+      { type: "Primary" },
+      { type: "Primary" },
+      { type: "Forwarder" },
+      { type: "Catalog" },
+      { type: "Primary", internal: true },
+    ])
+    expect(g).toEqual([
+      { type: "Primary", count: 2 },
+      { type: "Forwarder", count: 1 },
+      { type: "Other", count: 1 },
+    ])
+  })
+})
+
+describe("cached", () => {
+  it("reuses a fresh result, and re-runs when forced", async () => {
+    clearCache()
+    let calls = 0
+    const fn = async () => ++calls
+    expect(await cached("k", 1000, fn)).toBe(1)
+    expect(await cached("k", 1000, fn)).toBe(1)
+    expect(await cached("k", 1000, fn, true)).toBe(2)
+  })
+})
+
+import { labelYs } from "./charts"
+
+describe("labelYs", () => {
+  it("keeps labels at their node middle when there is room, and spaces crowded ones", () => {
+    expect(labelYs([{ y: 8, h: 100 }])).toEqual([62])
+    const ys = labelYs([
+      { y: 100, h: 3 },
+      { y: 113, h: 3 },
+      { y: 126, h: 40 },
+    ])
+    expect(ys[1]! - ys[0]!).toBeGreaterThanOrEqual(14)
+    expect(ys[2]! - ys[1]!).toBeGreaterThanOrEqual(14)
+  })
+})

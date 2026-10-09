@@ -5,7 +5,21 @@ import { createRouter, createMemoryHistory } from "vue-router"
 
 vi.mock("../../api/technitium", async () => {
   const actual = await vi.importActual<typeof import("../../api/technitium")>("../../api/technitium")
-  return { ...actual, getDashboardStats: vi.fn(), getTopStats: vi.fn(), getSettings: vi.fn() }
+  // Everything the extra panels fetch is stubbed to fail, so these tests
+  // never reach a real network and the panels fall back to their
+  // "unavailable" states.
+  const unavailable = () => vi.fn().mockRejectedValue(new Error("not mocked"))
+  return {
+    ...actual,
+    getDashboardStats: vi.fn(),
+    getTopStats: vi.fn(),
+    getSettings: vi.fn(),
+    queryLogs: unavailable(),
+    listApps: unavailable(),
+    listDhcpScopes: unavailable(),
+    listDhcpLeases: unavailable(),
+    listZones: unavailable(),
+  }
 })
 
 vi.mock("../../api/app", async () => {
@@ -19,6 +33,7 @@ import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
 import { useAuthStore } from "../../stores/auth"
+import { clearCache } from "../../lib/charts"
 import OverviewView from "./OverviewView.vue"
 
 const baseStats = {
@@ -73,6 +88,7 @@ async function mountConnected() {
 
 describe("OverviewView", () => {
   beforeEach(() => {
+    clearCache()
     localStorage.clear()
     setActivePinia(createPinia())
     vi.mocked(getDashboardStats).mockReset()
@@ -114,9 +130,14 @@ describe("OverviewView", () => {
     await mountConnected()
     await flushPromises()
 
-    const custom = vi.mocked(getDashboardStats).mock.calls.filter((c) => c[0] === "Custom")
-    expect(custom).toHaveLength(1)
-    expect(custom[0]![2]).toEqual(expect.objectContaining({ start: expect.any(String), end: expect.any(String) }))
+    // The default range is one hour, so the comparison window is one hour
+    // long. (The heatmap panel makes its own three multi-day Custom calls.)
+    const hourLong = vi
+      .mocked(getDashboardStats)
+      .mock.calls.filter((c) => c[0] === "Custom")
+      .filter((c) => new Date(c[2]!.end!).getTime() - new Date(c[2]!.start!).getTime() === 3600_000)
+    expect(hourLong).toHaveLength(1)
+    expect(hourLong[0]![2]).toEqual(expect.objectContaining({ utc: true }))
   })
 
   it("still renders when the previous-period call fails", async () => {
@@ -191,7 +212,10 @@ describe("OverviewView", () => {
     await wrapper.vm.$nextTick()
     await flushPromises()
 
-    expect(getDashboardStats).toHaveBeenCalledTimes(1)
+    // The heatmap panel also re-fetches its week of Custom windows; the
+    // page's own stats are the one call that is not Custom.
+    const main = vi.mocked(getDashboardStats).mock.calls.filter((c) => c[0] !== "Custom")
+    expect(main).toHaveLength(1)
   })
 
   it("shows the rate-limited banner only when the API reports a rate-limited client", async () => {

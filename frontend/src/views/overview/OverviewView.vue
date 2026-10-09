@@ -5,12 +5,15 @@ import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
 import { useAuthStore } from "../../stores/auth"
+import { useQueryLogsAppStore } from "../../stores/queryLogsApp"
 import {
   getDashboardStats,
   getTopStats,
   getSettings,
+  queryLogs,
   TechnitiumApiError,
   type DashboardStatsResult,
+  type QueryLogEntry,
   type TopClientEntry,
 } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
@@ -20,13 +23,21 @@ import QueriesChart from "../../components/overview/QueriesChart.vue"
 import ChartPanel from "../../components/charts/ChartPanel.vue"
 import DonutChart, { type DonutItem } from "../../components/charts/DonutChart.vue"
 import TypeBars from "../../components/charts/TypeBars.vue"
-import { previousRange } from "../../lib/charts"
+import LatencyPanel from "../../components/overview/LatencyPanel.vue"
+import HeatmapPanel from "../../components/overview/HeatmapPanel.vue"
+import FlowPanel from "../../components/overview/FlowPanel.vue"
+import DhcpUsagePanel from "../../components/overview/DhcpUsagePanel.vue"
+import ZoneTypesPanel from "../../components/overview/ZoneTypesPanel.vue"
+import CacheSizePanel from "../../components/overview/CacheSizePanel.vue"
+import { buildFlows, cached, previousRange } from "../../lib/charts"
+import { durationToRange } from "../../lib/dateRange"
 import TopList from "../../components/overview/TopList.vue"
 import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
 const router = useRouter()
 const auth = useAuthStore()
+const queryLogsApp = useQueryLogsAppStore()
 // Time range is a single global control in the topbar (AppShell.vue),
 // not a per-page copy — the wireframe puts it there once and Overview
 // and Clients both read the same selection.
@@ -86,6 +97,44 @@ function computeBlockListFreshness(settings: {
   }
 }
 
+// The response-time and flow panels read one sample of the latest logged
+// queries. It is a single large request, so it is reused for a minute
+// (Live refresh included) and only re-fetched early by the refresh button.
+const LOG_SAMPLE_SIZE = 5000
+const LOG_SAMPLE_TTL_MS = 60 * 1000
+const logEntries = ref<QueryLogEntry[]>([])
+const logState = ref<"loading" | "ready" | "missing" | "error">("loading")
+let forceNext = false
+
+async function loadLogSample(force: boolean): Promise<void> {
+  await queryLogsApp.ensure(connection.credentials)
+  if (queryLogsApp.missing) {
+    logState.value = "missing"
+    return
+  }
+  const app = queryLogsApp.app
+  if (!app) {
+    logState.value = "error"
+    return
+  }
+  const duration = timeRange.selected
+  try {
+    const res = await cached(
+      `log-sample-${duration}`,
+      LOG_SAMPLE_TTL_MS,
+      () => queryLogs(connection.credentials, app, { ...durationToRange(duration), pageNumber: 1, entriesPerPage: LOG_SAMPLE_SIZE, descendingOrder: true }),
+      force,
+    )
+    logEntries.value = res.response.entries
+    logState.value = "ready"
+  } catch {
+    logState.value = "error"
+  }
+}
+
+const rtts = computed(() => logEntries.value.map((e) => e.responseRtt).filter((r): r is number => typeof r === "number"))
+const flows = computed(() => (logState.value === "ready" ? buildFlows(logEntries.value) : null))
+
 async function load(): Promise<void> {
   if (!connection.isConfigured) return
   loading.value = true
@@ -104,6 +153,9 @@ async function load(): Promise<void> {
     stats.value = statsRes.response
     rateLimitedClient.value = rateLimitedRes.response.topClients?.[0] ?? null
     blockListFreshness.value = computeBlockListFreshness(settingsRes.response)
+    const force = forceNext
+    forceNext = false
+    void loadLogSample(force)
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load dashboard stats."
   } finally {
@@ -183,7 +235,13 @@ const { liveOn, toggle: toggleLive } = useLivePolling(() => load(), 5000, "overv
 
 onMounted(load)
 watch(() => timeRange.selected, load)
-watch(() => refresh.tick, load)
+watch(
+  () => refresh.tick,
+  () => {
+    forceNext = true
+    void load()
+  },
+)
 // Reload once the connection becomes configured after this page has
 // already mounted (e.g. the user lands here before ever visiting
 // Connection Settings) — onMounted alone would only cover the case
@@ -274,12 +332,23 @@ watch(
         <ChartPanel title="Query types" hint="Click a bar to filter Query Logs." class="lg:col-span-4">
           <TypeBars :labels="typeRows.labels" :values="typeRows.values" @select="onTypeSelect" />
         </ChartPanel>
+        <LatencyPanel :rtts="rtts" :sample-size="logEntries.length" :state="logState" class="lg:col-span-4" />
       </div>
 
       <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
         <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" filter-key="client" />
         <TopList title="Top domains" :items="stats.topDomains ?? []" tone="ok" filter-key="qname" />
         <TopList title="Top blocked" :items="stats.topBlockedDomains ?? []" tone="crit" filter-key="qname" />
+      </div>
+
+      <div class="mt-3.5 flex flex-col gap-3.5">
+        <HeatmapPanel />
+        <FlowPanel :flows="flows" :state="logState" />
+        <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
+          <DhcpUsagePanel />
+          <ZoneTypesPanel />
+          <CacheSizePanel :entries="stats.stats.cachedEntries" />
+        </div>
       </div>
     </template>
 

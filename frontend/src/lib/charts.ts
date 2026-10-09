@@ -220,3 +220,161 @@ export function stackNodes(values: number[], x: number, top: number, scale: numb
     return node
   })
 }
+
+// ---------- heatmap click-through ----------
+
+// The most recent hour (within the last 7 days) that fell on this weekday
+// (Mon = 0) and hour of day, as an ISO window to open in Query Logs.
+export function lastOccurrence(day: number, hour: number, now: Date = new Date()): { start: string; end: string } {
+  const d = new Date(now)
+  d.setMinutes(0, 0, 0)
+  d.setHours(hour)
+  for (let back = 0; back < 8; back++) {
+    if ((d.getDay() + 6) % 7 === day && d.getTime() <= now.getTime()) break
+    d.setDate(d.getDate() - 1)
+  }
+  const end = new Date(d)
+  end.setHours(end.getHours() + 1)
+  return { start: d.toISOString(), end: end.toISOString() }
+}
+
+// ---------- resolution flow ----------
+
+export interface LogEntryLike {
+  responseType: string
+  rcode: string
+}
+
+// Technitium reports three flavours of blocking (local list, cache, and
+// upstream); the diagram treats them as one "Blocked" path.
+export function pathOf(responseType: string): string {
+  if (responseType === "Cached" || responseType === "Recursive" || responseType === "Authoritative") return responseType
+  if (responseType.endsWith("Blocked") || responseType === "Blocked") return "Blocked"
+  return "Other"
+}
+
+export function outcomeOf(responseType: string, rcode: string): string {
+  if (pathOf(responseType) === "Blocked") return "Blocked reply"
+  switch (rcode) {
+    case "NoError":
+      return "No error"
+    case "NxDomain":
+      return "NXDomain"
+    case "ServerFailure":
+      return "Server failure"
+    case "Refused":
+      return "Refused"
+    default:
+      return "Other"
+  }
+}
+
+export interface Flows {
+  paths: { name: string; value: number }[]
+  outcomes: { name: string; value: number }[]
+  // [path index, outcome index, count]
+  links: [number, number, number][]
+  total: number
+}
+
+export const PATH_ORDER = ["Cached", "Recursive", "Authoritative", "Blocked", "Other"]
+export const OUTCOME_ORDER = ["No error", "NXDomain", "Server failure", "Blocked reply", "Refused", "Other"]
+
+// Counts how queries moved from the way they were answered to the result
+// the client got. Empty paths and outcomes are left out.
+export function buildFlows(entries: LogEntryLike[]): Flows {
+  const counts = new Map<string, number>()
+  for (const e of entries) {
+    const key = `${pathOf(e.responseType)}|${outcomeOf(e.responseType, e.rcode)}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const used = [...counts.keys()].map((k) => k.split("|") as [string, string])
+  const pathNames = PATH_ORDER.filter((p) => used.some(([a]) => a === p))
+  const outNames = OUTCOME_ORDER.filter((o) => used.some(([, b]) => b === o))
+  const links: [number, number, number][] = []
+  for (const [key, n] of counts) {
+    const [p, o] = key.split("|") as [string, string]
+    links.push([pathNames.indexOf(p), outNames.indexOf(o), n])
+  }
+  links.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  const sumBy = (idx: 0 | 1, i: number) => links.filter((l) => l[idx] === i).reduce((a, l) => a + l[2], 0)
+  return {
+    paths: pathNames.map((name, i) => ({ name, value: sumBy(0, i) })),
+    outcomes: outNames.map((name, i) => ({ name, value: sumBy(1, i) })),
+    links,
+    total: entries.length,
+  }
+}
+
+// ---------- DHCP scope size ----------
+
+export function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split(".")
+  if (parts.length !== 4) return null
+  let n = 0
+  for (const p of parts) {
+    const v = Number(p)
+    if (!Number.isInteger(v) || v < 0 || v > 255) return null
+    n = n * 256 + v
+  }
+  return n
+}
+
+// Number of addresses in a scope's range, or null for anything that is
+// not a plain IPv4 range.
+export function scopeSize(start: string, end: string): number | null {
+  const a = ipv4ToInt(start)
+  const b = ipv4ToInt(end)
+  if (a === null || b === null || b < a) return null
+  return b - a + 1
+}
+
+// ---------- zones ----------
+
+export const ZONE_TYPE_COLORS: Record<string, string> = {
+  Primary: "rgb(var(--color-chart-blue))",
+  Forwarder: "rgb(var(--color-chart-orange))",
+  Secondary: "rgb(var(--color-chart-violet))",
+  Stub: "rgb(var(--color-chart-gray))",
+}
+
+export function groupZoneTypes(zones: { type: string; internal?: boolean }[]): { type: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const z of zones) {
+    if (z.internal) continue
+    const type = z.type in ZONE_TYPE_COLORS ? z.type : "Other"
+    counts.set(type, (counts.get(type) ?? 0) + 1)
+  }
+  return [...counts].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count)
+}
+
+// ---------- short-lived cache ----------
+
+const cache = new Map<string, { at: number; value: unknown }>()
+
+// Remembers a result for ttlMs so Live refresh and quick navigation do
+// not re-run heavy requests (a 5,000-entry log sample, a week of stats).
+// `force` skips the cached value, for the manual refresh button.
+export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>, force = false): Promise<T> {
+  const hit = cache.get(key)
+  if (!force && hit && Date.now() - hit.at < ttlMs) return hit.value as T
+  const value = await fn()
+  cache.set(key, { at: Date.now(), value })
+  return value
+}
+
+export function clearCache(): void {
+  cache.clear()
+}
+
+// Label baselines for a column of stacked nodes: each label sits at its
+// node's middle, pushed down where thin neighbours would make them touch.
+export function labelYs(nodes: { y: number; h: number }[], minGap = 14): number[] {
+  const out: number[] = []
+  for (const n of nodes) {
+    const want = n.y + Math.max(n.h / 2, 8) + 4
+    const prev = out[out.length - 1]
+    out.push(prev === undefined ? want : Math.max(want, prev + minGap))
+  }
+  return out
+}
