@@ -31,7 +31,7 @@ async function onTestConnection() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-xl px-6 py-16">
+  <main class="max-w-xl px-6 py-16">
     <h1 class="text-2xl font-semibold tracking-tight">Connection Settings</h1>
     <p class="mt-1 text-sm text-gray-500">
       Point Resolvr at your Technitium DNS Server &mdash; saved here for everyone who signs into this
