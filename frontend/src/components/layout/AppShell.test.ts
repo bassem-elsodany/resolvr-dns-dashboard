@@ -72,6 +72,17 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("Connection Settings")
   })
 
+  it("keeps page content left-aligned next to the sidebar instead of centering it", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    const content = wrapper.get("header + div")
+    expect(content.classes()).toContain("max-w-6xl")
+    expect(content.classes()).not.toContain("mx-auto")
+  })
+
   it("hides admin-only nav items (Users, Connection Settings) for a viewer", async () => {
     const auth = useAuthStore()
     auth.user = { id: 2, username: "reader", role: "viewer" }
