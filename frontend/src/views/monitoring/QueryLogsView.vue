@@ -222,6 +222,8 @@ function applyRouteQuery(): void {
   const qClient = route.query.client
   const qQname = route.query.qname
   if (typeof qClient === "string" && qClient) {
+    // A client link may also name a domain (from a client's top lists).
+    filters.qname = typeof qQname === "string" ? qQname : ""
     filterByClient(qClient)
   } else if (typeof qQname === "string" && qQname) {
     filterByQname(qQname)

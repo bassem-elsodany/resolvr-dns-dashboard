@@ -5,19 +5,18 @@ import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
 import { useAuthStore } from "../../stores/auth"
-import { useQueryLogsAppStore } from "../../stores/queryLogsApp"
 import {
   getDashboardStats,
   getTopStats,
   getSettings,
-  queryLogs,
   TechnitiumApiError,
   type DashboardStatsResult,
-  type QueryLogEntry,
   type TopClientEntry,
 } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import { useLivePolling } from "../../composables/useLivePolling"
+import { usePreviousStats } from "../../composables/usePreviousStats"
+import { useLogSample } from "../../composables/useLogSample"
 import TrendTiles from "../../components/overview/TrendTiles.vue"
 import QueriesChart from "../../components/overview/QueriesChart.vue"
 import ChartPanel from "../../components/charts/ChartPanel.vue"
@@ -29,8 +28,7 @@ import FlowPanel from "../../components/overview/FlowPanel.vue"
 import DhcpUsagePanel from "../../components/overview/DhcpUsagePanel.vue"
 import ZoneTypesPanel from "../../components/overview/ZoneTypesPanel.vue"
 import CacheSizePanel from "../../components/overview/CacheSizePanel.vue"
-import { buildFlows, cached, previousRange } from "../../lib/charts"
-import { durationToRange } from "../../lib/dateRange"
+import { buildFlows } from "../../lib/charts"
 import TopList from "../../components/overview/TopList.vue"
 import LiveToggle from "../../components/ui/LiveToggle.vue"
 
@@ -38,7 +36,6 @@ const connection = useConnectionStore()
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const queryLogsApp = useQueryLogsAppStore()
 // Time range is a single global control in the topbar (AppShell.vue),
 // not a per-page copy — the wireframe puts it there once and Overview
 // and Clients both read the same selection.
@@ -48,29 +45,7 @@ const refresh = useRefreshStore()
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const stats = ref<DashboardStatsResult["response"] | null>(null)
-// Totals for the window just before the selected one, for the tiles'
-// "vs previous" change. Cached per range so a Live refresh every few
-// seconds does not double the number of calls for data that barely moves.
-const prevStats = ref<DashboardStatsResult["response"]["stats"] | null>(null)
-let prevCache: { duration: string; at: number; stats: DashboardStatsResult["response"]["stats"] | null } | null = null
-const PREV_TTL_MS = 5 * 60 * 1000
-
-async function loadPrevious(): Promise<DashboardStatsResult["response"]["stats"] | null> {
-  const duration = timeRange.selected
-  if (prevCache && prevCache.duration === duration && Date.now() - prevCache.at < PREV_TTL_MS) return prevCache.stats
-  const range = previousRange(duration)
-  let result: DashboardStatsResult["response"]["stats"] | null = null
-  if (range) {
-    try {
-      const res = await getDashboardStats("Custom", connection.credentials, { utc: true, ...range })
-      result = res.response.stats
-    } catch {
-      // The comparison is a nicety; the page works without it.
-    }
-  }
-  prevCache = { duration, at: Date.now(), stats: result }
-  return result
-}
+const { prevStats, loadPrevious } = usePreviousStats()
 const rateLimitedClient = ref<TopClientEntry | null>(null)
 const blockListFreshness = ref<{ overdue: boolean; message: string } | null>(null)
 
@@ -141,40 +116,12 @@ function onTabKey(e: KeyboardEvent): void {
   void nextTick(() => document.getElementById(`overview-tab-${target}`)?.focus())
 }
 
-// The response-time and flow panels read one sample of the latest logged
-// queries. It is a single large request, so it is reused for a minute
-// (Live refresh included) and only re-fetched early by the refresh button.
-const LOG_SAMPLE_SIZE = 5000
-const LOG_SAMPLE_TTL_MS = 60 * 1000
-const logEntries = ref<QueryLogEntry[]>([])
-const logState = ref<"loading" | "ready" | "missing" | "error">("loading")
+// The response-time and flow panels read a shared sample of the latest
+// logged queries (see useLogSample for how it is cached).
+const { entries: logEntries, state: logState, load: loadLogSample } = useLogSample()
 let forceNext = false
-
-async function loadLogSample(force: boolean): Promise<void> {
-  await queryLogsApp.ensure(connection.credentials)
-  if (queryLogsApp.missing) {
-    logState.value = "missing"
-    return
-  }
-  const app = queryLogsApp.app
-  if (!app) {
-    logState.value = "error"
-    return
-  }
-  const duration = timeRange.selected
-  try {
-    const res = await cached(
-      `log-sample-${duration}`,
-      LOG_SAMPLE_TTL_MS,
-      () => queryLogs(connection.credentials, app, { ...durationToRange(duration), pageNumber: 1, entriesPerPage: LOG_SAMPLE_SIZE, descendingOrder: true }),
-      force,
-    )
-    logEntries.value = res.response.entries
-    logState.value = "ready"
-  } catch {
-    logState.value = "error"
-  }
-}
+// Only the tab that draws from the log sample asks for it.
+const needsLogSample = computed(() => tab.value === "resolution")
 
 const rtts = computed(() => logEntries.value.map((e) => e.responseRtt).filter((r): r is number => typeof r === "number"))
 const flows = computed(() => (logState.value === "ready" ? buildFlows(logEntries.value) : null))
@@ -184,7 +131,7 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const [statsRes, rateLimitedRes, settingsRes, prev] = await Promise.all([
+    const [statsRes, rateLimitedRes, settingsRes] = await Promise.all([
       getDashboardStats(timeRange.selected, connection.credentials, { utc: true }),
       getTopStats("TopClients", timeRange.selected, connection.credentials, {
         onlyRateLimitedClients: true,
@@ -193,13 +140,12 @@ async function load(): Promise<void> {
       getSettings(connection.credentials),
       loadPrevious(),
     ])
-    prevStats.value = prev
     stats.value = statsRes.response
     rateLimitedClient.value = rateLimitedRes.response.topClients?.[0] ?? null
     blockListFreshness.value = computeBlockListFreshness(settingsRes.response)
     const force = forceNext
     forceNext = false
-    if (tab.value === "resolution") void loadLogSample(force)
+    if (needsLogSample.value) void loadLogSample(force)
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load dashboard stats."
   } finally {
