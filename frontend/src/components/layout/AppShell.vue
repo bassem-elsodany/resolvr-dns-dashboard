@@ -245,7 +245,7 @@ function navBadgeClass(to: string): string {
         </div>
       </header>
 
-      <div class="mx-auto w-full max-w-6xl flex-1 px-5 py-6">
+      <div class="w-full max-w-6xl flex-1 px-5 py-6">
         <router-view />
       </div>
     </div>
