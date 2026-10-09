@@ -1,4 +1,6 @@
 <script setup lang="ts">
+
+const appVersion = __APP_VERSION__
 import { ref, watch, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
@@ -114,7 +116,15 @@ function navBadgeClass(to: string): string {
           </svg>
         </div>
         <div>
-          <div class="text-sm font-bold tracking-tight">Resolvr</div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm font-bold tracking-tight">Resolvr</span>
+            <span
+              id="app-version"
+              :title="`Resolvr v${appVersion}`"
+              class="rounded border border-border-hover px-1 text-[10px] font-semibold leading-4 tabular-nums text-gray-500"
+              >v{{ appVersion }}</span
+            >
+          </div>
           <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">DNS Monitor</div>
         </div>
       </div>
