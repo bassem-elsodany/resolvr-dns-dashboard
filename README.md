@@ -7,26 +7,38 @@ A monitoring dashboard for [Technitium DNS Server](https://technitium.com/dns/) 
 
 `dns` · `technitium` · `dns-server` · `dashboard` · `self-hosted` · `homelab` · `monitoring` · `dns-monitoring` · `ad-blocking` · `vue3` · `typescript` · `docker` · `sqlite` · `express`
 
-![Overview dashboard](docs/screenshots/overview.png)
+![Overview dashboard, Traffic tab](docs/screenshots/overview.png)
 
 ## What it does
 
-- **Live monitoring** — query volume over time, query types, top clients, top domains, top blocked domains, cache contents, DHCP leases and zones, all read from your Technitium server.
-- **Query Logs** with real filtering — client IP, query name, response type, protocol, RCODE, record type — plus a per-host "allowed vs. blocked" breakdown and a live-tail toggle.
-- **Blocked Zones as an actual tree**, not a flat list — Technitium's blocked-zone API is a tree browser, so Resolvr lazily expands it instead of showing only the misleading top-level labels.
-- **Block list sources** — see and edit the feed URLs your server subscribes to, in one place.
+- **Overview in four tabs**, all read from your Technitium server. Stat tiles above the tabs show change against the previous period.
+  - **Traffic** — queries over time (toggle series, stack allowed vs. blocked, drag to select a window and open it in Query Logs), query types, and a 7-day "when is my network busy" heatmap.
+  - **Resolution** — where answers come from (cache, upstream, blocked, authoritative), response outcomes, upstream response time, and a flow diagram of how queries get resolved.
+  - **Top lists** — top clients, top domains, top blocked domains.
+  - **Infrastructure** — DHCP scope usage, zones by type, cache size over time.
+
+  Every chart is clickable and jumps to Query Logs filtered to what you clicked.
+- **Clients** — pick any device and see its queries, block rate, DHCP lease, activity, top and blocked domains, protocols and latest queries. A traffic-share bar and a recent-activity grid show who is busy; search, filter (heavy blocking, rate limited, new, quiet) and sort the list.
+- **Query Logs** with real filtering — client IP, query name, response type, protocol, RCODE, record type, and a time window — plus a per-host "allowed vs. blocked" breakdown, CSV export and a live-tail toggle.
+- **Blocked Zones** — a status card showing when the block lists were last updated and when the next update is, with an **Update now** button and a history of how many domains the lists held after each refresh. Below it, three tabs: **Feeds** (add, remove, reorder and group the feeds you subscribe to, with one save bar), **Your domains** (a searchable list of domains you block yourself, with paste-a-list and undo), and **Check a domain** (asks your server whether a name is blocked, and which feed blocked it).
 - **Its own users and roles** — Admins can manage users, edit the Technitium connection, and use the handful of mutating actions below; Viewers get full read access to every monitoring page and nothing else.
-- **A set of deliberate, narrow admin actions** on top of an otherwise read-only design: flush the DNS cache, force a block-list update, add/remove a blocked domain, edit block list source URLs, revoke a stale session, uninstall an app, and manage simple host-to-IP mappings (create a zone, add an A/AAAA record, delete the zone — the same pattern as AdGuard Home's "DNS rewrites"). Each one is a single hardcoded call to a specific Technitium endpoint, gated to the admin role, and confirmed before it runs — never a general write proxy.
+- **A set of deliberate, narrow admin actions** on top of an otherwise read-only design: flush the DNS cache, force a block-list update, add/remove a blocked domain, edit block list feeds, revoke a stale session, uninstall an app, and manage simple host-to-IP mappings (create a zone, add an A/AAAA record, delete the zone — the same pattern as AdGuard Home's "DNS rewrites"). Each one is a single hardcoded call to a specific Technitium endpoint, gated to the admin role, and confirmed before it runs — never a general write proxy.
 
 Resolvr never touches anything on your DNS server beyond that short, explicit list of admin actions — every other page only reads. A Viewer account can't use any of them.
+
+The query-based panels (Resolution, Clients, Query Logs) need one of Technitium's query-logging apps installed on the server; the page tells you when it is missing. A few small things are remembered in your browser rather than on the server: the open tab, the block-list and cache history, and which clients you have already seen.
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Sign in](docs/screenshots/login.png) | ![Query Logs](docs/screenshots/query-logs.png) |
-| ![Clients](docs/screenshots/clients.png) | ![Blocked Zones tree](docs/screenshots/blocked-zones.png) |
-| ![Users](docs/screenshots/users.png) | |
+| ![Overview: Resolution tab](docs/screenshots/overview-resolution.png) | ![Overview: Infrastructure tab](docs/screenshots/overview-infrastructure.png) |
+| ![Overview: Top lists tab](docs/screenshots/overview-top-lists.png) | ![Clients](docs/screenshots/clients.png) |
+| ![Query Logs](docs/screenshots/query-logs.png) | ![Blocked Zones: Feeds](docs/screenshots/blocked-zones.png) |
+| ![Blocked Zones: Your domains](docs/screenshots/blocked-zones-domains.png) | ![Blocked Zones: Check a domain](docs/screenshots/blocked-zones-check.png) |
+| ![Users](docs/screenshots/users.png) | ![Sign in](docs/screenshots/login.png) |
+
+The screenshots use made-up data: private-range IPs, generic device names, and `example.*` domains.
 
 ## Architecture
 
