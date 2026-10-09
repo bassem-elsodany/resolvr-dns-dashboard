@@ -1,331 +1,171 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import { useAuthStore } from "../../stores/auth"
-import { listBlockedZones, exportBlockedZones, getSettings, TechnitiumApiError } from "../../api/technitium"
-import { updateBlockListUrls, blockDomain, unblockDomain, AppApiError } from "../../api/app"
-import { triggerDownload } from "../../lib/download"
-import ZoneTreeNode from "../../components/zones/ZoneTreeNode.vue"
+import { getDashboardStats, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { updateBlockListUrls, AppApiError } from "../../api/app"
+import { useUndoToast } from "../../composables/useUndoToast"
+import { useRouteTab } from "../../composables/useRouteTab"
+import TabBar from "../../components/ui/TabBar.vue"
+import BlockListStatus from "../../components/blocked/BlockListStatus.vue"
+import BlockListFeeds from "../../components/blocked/BlockListFeeds.vue"
+import BlockedDomains from "../../components/blocked/BlockedDomains.vue"
+import DomainChecker from "../../components/blocked/DomainChecker.vue"
+import UndoToast from "../../components/ui/UndoToast.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
 const auth = useAuthStore()
+const { toast, show, runUndo } = useUndoToast()
 
-const loading = ref(false)
-const loadError = ref<string | null>(null)
-const domains = ref<string[]>([])
-const filterText = ref("")
+// ---------- what the server says about its block lists ----------
 
-interface BlockListLine {
-  kind: "comment" | "url"
-  text: string
-}
-
+const lines = ref<string[]>([])
 const enableBlocking = ref<boolean | null>(null)
 const blockingType = ref<string | null>(null)
-const blockListLines = ref<BlockListLine[]>([])
-const configLoadError = ref<string | null>(null)
+const nextUpdatedOn = ref<string | undefined>(undefined)
+const intervalHours = ref<number | undefined>(undefined)
+const total = ref<number | null>(null)
+const loadError = ref<string | null>(null)
 
-// Lines starting with "#" are the admin's own grouping labels inside
-// the blockListUrls list (confirmed live — e.g. "# Hagezi PRO++" above
-// the URL it labels) — render them as sub-headers, not list items.
-function toBlockListLines(urls: string[]): BlockListLine[] {
-  return urls.map((line) => ({ kind: line.trim().startsWith("#") ? "comment" : "url", text: line.trim() }))
+async function loadSettings(): Promise<void> {
+  const res = await getSettings(connection.credentials)
+  lines.value = res.response.blockListUrls ?? []
+  enableBlocking.value = res.response.enableBlocking ?? null
+  blockingType.value = res.response.blockingType ?? null
+  nextUpdatedOn.value = res.response.blockListNextUpdatedOn
+  intervalHours.value = res.response.blockListUpdateIntervalHours
 }
 
-async function loadBlockListConfig(): Promise<void> {
-  if (!connection.isConfigured) return
-  configLoadError.value = null
+// Domains held by the lists. The count does not depend on the time range;
+// the shortest range is the cheapest call that carries it.
+async function loadTotal(): Promise<number | null> {
   try {
-    const res = await getSettings(connection.credentials)
-    enableBlocking.value = res.response.enableBlocking ?? null
-    blockingType.value = res.response.blockingType ?? null
-    blockListLines.value = toBlockListLines(res.response.blockListUrls ?? [])
-  } catch (err) {
-    configLoadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load block list sources."
+    const res = await getDashboardStats("LastHour", connection.credentials, { utc: true })
+    total.value = res.response.stats.blockListZones ?? null
+  } catch {
+    total.value = null
   }
+  return total.value
 }
-
-// Admin editing — the raw list (comments and URLs, in order) is edited
-// as plain text, one entry per line, mirroring exactly what's stored:
-// Technitium doesn't distinguish them structurally, an admin's own "#
-// Some Label" line is just another string in the same array.
-const editingSources = ref(false)
-const editSourcesText = ref("")
-const savingSources = ref(false)
-const saveSourcesError = ref<string | null>(null)
-const sourcesSavedJustNow = ref(false)
-
-function startEditSources(): void {
-  editSourcesText.value = blockListLines.value.map((l) => l.text).join("\n")
-  saveSourcesError.value = null
-  sourcesSavedJustNow.value = false
-  editingSources.value = true
-}
-
-function cancelEditSources(): void {
-  editingSources.value = false
-}
-
-async function saveSources(): Promise<void> {
-  savingSources.value = true
-  saveSourcesError.value = null
-  try {
-    const urls = editSourcesText.value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-    await updateBlockListUrls(urls)
-    await loadBlockListConfig()
-    editingSources.value = false
-    sourcesSavedJustNow.value = true
-  } catch (err) {
-    saveSourcesError.value = err instanceof AppApiError ? err.message : "Could not save block list sources."
-  } finally {
-    savingSources.value = false
-  }
-}
-
-const filteredDomains = computed(() => {
-  const needle = filterText.value.trim().toLowerCase()
-  if (!needle) return domains.value
-  return domains.value.filter((d) => d.toLowerCase().includes(needle))
-})
 
 async function load(): Promise<void> {
   if (!connection.isConfigured) return
-  loading.value = true
   loadError.value = null
   try {
-    const res = await listBlockedZones(connection.credentials)
-    // Same tree-browser shape as /api/allowed/list (see AllowedZonesView) —
-    // fall back to record names if the root call ever auto-descends.
-    if (res.response.zones.length > 0) {
-      domains.value = res.response.zones
-    } else {
-      domains.value = [...new Set(res.response.records.map((r) => r.name))]
-    }
+    await Promise.all([loadSettings(), loadTotal()])
   } catch (err) {
-    loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load blocked zones."
-  } finally {
-    loading.value = false
+    loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load the block list settings."
   }
 }
 
-function fetchNode(domain: string) {
-  return listBlockedZones(connection.credentials, domain)
+// Used while watching an update finish.
+async function fetchStatus(): Promise<{ next?: string; total: number | null }> {
+  await loadSettings()
+  return { next: nextUpdatedOn.value, total: await loadTotal() }
 }
 
-// Passed to the tree's admin-only Remove control — kept undefined for
-// a viewer so ZoneTreeNode never renders the control at all, rather
-// than rendering-then-hiding it.
-const deleteDomain = computed(() => (auth.isAdmin ? unblockDomain : undefined))
-
-const newDomain = ref("")
-const addingDomain = ref(false)
-const addDomainError = ref<string | null>(null)
-
-async function onAddDomain(): Promise<void> {
-  const domain = newDomain.value.trim()
-  if (!domain) return
-  addingDomain.value = true
-  addDomainError.value = null
-  try {
-    await blockDomain(domain)
-    newDomain.value = ""
-    await load() // a brand new root label (e.g. a TLD never blocked before) needs to appear
-  } catch (err) {
-    addDomainError.value = err instanceof AppApiError ? err.message : "Could not block this domain."
-  } finally {
-    addingDomain.value = false
-  }
-}
-
-async function onExport(): Promise<void> {
-  try {
-    triggerDownload(await exportBlockedZones(connection.credentials))
-  } catch (err) {
-    loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not export blocked zones."
-  }
-}
-
-onMounted(() => {
-  load()
-  loadBlockListConfig()
-})
+onMounted(load)
 watch(() => refresh.tick, load)
 watch(
   () => connection.isConfigured,
   (configured) => {
-    if (configured) {
-      load()
-      loadBlockListConfig()
-    }
+    if (configured) load()
   },
 )
+
+// ---------- feeds ----------
+
+const statusRef = ref<InstanceType<typeof BlockListStatus> | null>(null)
+const feedsRef = ref<InstanceType<typeof BlockListFeeds> | null>(null)
+const saving = ref(false)
+const saveError = ref<string | null>(null)
+
+async function onSave(newLines: string[], updateAfter: boolean): Promise<void> {
+  saving.value = true
+  saveError.value = null
+  try {
+    await updateBlockListUrls(newLines)
+    await loadSettings()
+    const feeds = newLines.filter((l) => !l.startsWith("#")).length
+    show(updateAfter ? `Saved ${feeds} feeds. Updating now.` : `Saved ${feeds} feeds. They are used from the next update.`)
+    if (updateAfter) void statusRef.value?.startUpdate()
+  } catch (err) {
+    saveError.value = err instanceof AppApiError ? err.message : "Could not save the feeds."
+  } finally {
+    saving.value = false
+  }
+}
+
+// ---------- pointing at what a domain check matched ----------
+
+const highlightFeed = ref<string | null>(null)
+const highlightDomain = ref<string | null>(null)
+
+function onMatched(m: { feed: string | null; domain: string | null }): void {
+  highlightFeed.value = m.feed
+  highlightDomain.value = m.domain
+}
+
+const hasUnsavedFeeds = computed(() => Boolean(feedsRef.value?.hasChanges))
+
+// ---------- tabs ----------
+
+// The status card stays on top; what you manage sits in tabs beneath it.
+// Feeds stays mounted when hidden, so an unfinished edit survives a visit
+// to another tab, and the tab says so.
+const tabs = computed(() => [
+  { id: "feeds", label: "Feeds", flag: hasUnsavedFeeds.value ? "Unsaved changes" : null },
+  { id: "domains", label: "Your domains" },
+  { id: "check", label: "Check a domain" },
+] as const)
+const { tab, setTab } = useRouteTab(["feeds", "domains", "check"] as const, "resolvr.blockedTab", "feeds")
 </script>
 
 <template>
-  <div>
-    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="text-lg font-semibold tracking-tight text-fg">Blocked Zones</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          Zones denied by the server's built-in blocking &mdash; independent from the Advanced
-          Blocking app's block lists
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <form v-if="auth.isAdmin" class="flex items-center gap-1.5" @submit.prevent="onAddDomain">
-          <input
-            id="new-blocked-domain"
-            v-model="newDomain"
-            placeholder="example.com"
-            class="w-40 rounded-md border border-border bg-background-card px-2.5 py-1.5 font-mono text-xs"
-          />
-          <button
-            id="add-blocked-domain"
-            type="submit"
-            :disabled="addingDomain"
-            class="rounded-md bg-accent px-2.5 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-50"
-          >
-            {{ addingDomain ? "Blocking…" : "Block domain" }}
-          </button>
-        </form>
-        <input
-          id="blocked-filter"
-          v-model="filterText"
-          placeholder="Filter&hellip;"
-          class="w-44 rounded-md border border-border bg-background-card px-3 py-1.5 text-sm"
-        />
-        <button
-          id="export-blocked"
-          type="button"
-          class="rounded-md border border-border bg-background-card px-2.5 py-1.5 text-[11.5px] font-semibold text-gray-500"
-          @click="onExport"
-        >
-          Export
-        </button>
-      </div>
+  <div class="flex max-w-[1100px] flex-col gap-3.5">
+    <div>
+      <h1 class="text-lg font-semibold tracking-tight text-fg">Blocked Zones</h1>
+      <p class="mt-1 text-sm text-gray-500">What your DNS server refuses to resolve: the feeds it downloads, plus domains you block yourself.</p>
     </div>
-    <p v-if="addDomainError" id="add-blocked-domain-error" class="mb-3 text-sm text-crit">{{ addDomainError }}</p>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">
       Connect to a Technitium server on the
-      <router-link to="/connect" class="font-medium text-accent">Connection Settings</router-link> page to see
-      blocked zones.
+      <router-link to="/connect" class="font-medium text-accent">Connection Settings</router-link> page to see blocked zones.
     </p>
 
-    <p v-if="loadError" id="blocked-error" class="text-sm text-crit">{{ loadError }}</p>
+    <template v-else>
+      <p v-if="loadError" id="settings-error" class="text-sm text-crit">{{ loadError }}</p>
 
-    <div v-if="connection.isConfigured" class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-      <div
-        v-if="blockListLines.length > 0 || configLoadError || auth.isAdmin"
-        class="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-background-card p-3.5 lg:order-1"
-      >
-        <div class="mb-2 flex flex-wrap items-center gap-2">
-          <div class="text-[12.5px] font-semibold">Block list sources</div>
-          <span
-            v-if="enableBlocking !== null"
-            class="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
-            :class="enableBlocking ? 'bg-ok/12 text-ok' : 'bg-gray-500/12 text-gray-500'"
-          >
-            {{ enableBlocking ? "Blocking enabled" : "Blocking disabled" }}
-          </span>
-          <span v-if="blockingType" class="text-[10.5px] text-gray-500">&middot; {{ blockingType }}</span>
-          <button
-            v-if="auth.isAdmin && !editingSources"
-            id="edit-block-list-sources"
-            type="button"
-            class="ml-auto text-[11.5px] font-semibold text-accent"
-            @click="startEditSources"
-          >
-            Edit
-          </button>
-        </div>
-        <p class="mb-2 text-[11px] text-gray-500">
-          The feeds this server downloads and merges into its block list zone &mdash; one entry per
-          line; lines starting with <span class="font-mono">#</span> are your own group labels, not
-          sent to Technitium as feeds.
-        </p>
-
-        <div v-if="editingSources" class="flex flex-col gap-2">
-          <textarea
-            id="block-list-sources-editor"
-            v-model="editSourcesText"
-            rows="10"
-            spellcheck="false"
-            class="w-full rounded-md border border-border bg-background-card px-2.5 py-2 font-mono text-[11.5px]"
-          />
-          <div class="flex items-center gap-2">
-            <button
-              id="save-block-list-sources"
-              type="button"
-              :disabled="savingSources"
-              class="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-              @click="saveSources"
-            >
-              {{ savingSources ? "Saving…" : "Save" }}
-            </button>
-            <button type="button" class="text-xs text-gray-500" @click="cancelEditSources">Cancel</button>
-          </div>
-          <p v-if="saveSourcesError" id="block-list-sources-save-error" class="text-xs text-crit">
-            {{ saveSourcesError }}
-          </p>
-        </div>
-        <template v-else>
-          <p v-if="configLoadError" id="block-list-sources-error" class="text-sm text-crit">{{ configLoadError }}</p>
-          <p v-else-if="sourcesSavedJustNow" class="mb-1 text-[11px] text-ok">Saved.</p>
-          <ul
-            v-if="!configLoadError && blockListLines.length > 0"
-            id="block-list-sources"
-            class="flex flex-col gap-0.5 text-[11.5px]"
-          >
-            <li
-              v-for="(line, i) in blockListLines"
-              :key="i"
-              :class="
-                line.kind === 'comment'
-                  ? 'mt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-gray-500 first:mt-0'
-                  : 'truncate font-mono text-fg'
-              "
-            >
-              <a
-                v-if="line.kind === 'url'"
-                :href="line.text"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="hover:text-accent hover:underline"
-                >{{ line.text }}</a
-              >
-              <template v-else>{{ line.text.replace(/^#\s*/, "") }}</template>
-            </li>
-          </ul>
-          <p v-else-if="!configLoadError" class="text-[11.5px] text-gray-500">No block list feeds configured.</p>
-        </template>
+      <BlockListStatus
+        ref="statusRef"
+        :enable-blocking="enableBlocking"
+        :blocking-type="blockingType"
+        :next-updated-on="nextUpdatedOn"
+        :interval-hours="intervalHours"
+        :total="total"
+        :is-admin="auth.isAdmin"
+        :has-unsaved-feeds="hasUnsavedFeeds"
+        :fetch-status="fetchStatus"
+        @updated="load"
+      />
+      <TabBar :tabs="tabs" :model-value="tab" id-prefix="blocked-tab" panel-id="blocked-tabpanel" label="Blocked zone sections" class="self-start !mb-0" @update:model-value="setTab" />
+      <div id="blocked-tabpanel" role="tabpanel" :aria-labelledby="`blocked-tab-${tab}`">
+        <BlockListFeeds
+          v-show="tab === 'feeds'"
+          ref="feedsRef"
+          :lines="lines"
+          :is-admin="auth.isAdmin"
+          :saving="saving"
+          :save-error="saveError"
+          :highlight-url="highlightFeed"
+          @save="onSave"
+        />
+        <BlockedDomains v-if="tab === 'domains'" :is-admin="auth.isAdmin" :highlight-domain="highlightDomain" />
+        <DomainChecker v-if="tab === 'check'" @matched="onMatched" @show="setTab" />
       </div>
-
-      <div v-if="!loadError" class="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-background-card p-2 lg:order-2">
-        <p class="px-1.5 pb-1.5 pt-1 text-[11px] text-gray-500">
-          Click a domain to expand it &mdash; each one may hold further blocked subdomains underneath.
-          <span class="rounded-md bg-crit/12 px-1.5 py-0.5 text-[10px] font-semibold text-crit">Blocked</span>
-          marks a domain that's actually denied, not just a grouping label.
-        </p>
-        <p v-if="filteredDomains.length === 0" class="px-1.5 py-4 text-center text-sm text-gray-500">
-          {{ loading ? "Loading…" : "No blocked zones." }}
-        </p>
-        <ul v-else id="blocked-zone-tree">
-          <ZoneTreeNode
-            v-for="domain in filteredDomains"
-            :key="domain"
-            :domain="domain"
-            :depth="0"
-            :fetch-node="fetchNode"
-            :delete-domain="deleteDomain"
-          />
-        </ul>
-      </div>
-    </div>
+    </template>
+    <UndoToast :toast="toast" @undo="runUndo" />
   </div>
 </template>
