@@ -1,10 +1,14 @@
 declare global {
   interface Window {
-    __RESOLVR_ENV__?: { BACKEND_URL?: string }
+    __RESOLVR_ENV__?: { BACKEND_URL?: string; SAME_ORIGIN?: boolean }
   }
 }
 
 // Resolution order:
+// 0. SAME_ORIGIN, set by the single-container image and the Home
+//    Assistant add-on, where this server also serves the page: the API is
+//    next to the page, under whatever path prefix the page was reached at
+//    (Home Assistant ingress puts one in front of everything).
 // 1. A runtime BACKEND_URL, injected into env-config.js by
 //    docker/docker-entrypoint.sh from the container's environment — set
 //    this (no rebuild needed) when the frontend sits behind a reverse
@@ -23,6 +27,9 @@ declare global {
 //    was "http://localhost:8787", which — from that OTHER device's
 //    browser — means its own loopback, not the Pi).
 export function resolveBackendUrl(): string {
+  if (typeof window !== "undefined" && window.__RESOLVR_ENV__?.SAME_ORIGIN) {
+    return new URL(".", document.baseURI).href.replace(/\/+$/, "")
+  }
   if (typeof window !== "undefined") {
     const runtime = window.__RESOLVR_ENV__?.BACKEND_URL
     if (runtime) return runtime.replace(/\/+$/, "")

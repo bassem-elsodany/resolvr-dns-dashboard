@@ -9,6 +9,9 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative asset URLs, resolved against <base href> in index.html, so the
+  // same build works at the site root and under a path prefix.
+  base: './',
   plugins: [vue()],
   define: {
     __APP_VERSION__: JSON.stringify(version),

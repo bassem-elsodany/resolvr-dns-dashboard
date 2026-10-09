@@ -5,6 +5,9 @@ import type { AppConfigRow } from "../db.js";
 
 export interface ConfigRoutesOptions {
   fetchImpl?: typeof fetch;
+  // The connection is set outside the app (the Home Assistant add-on's
+  // Configuration tab), so it cannot be changed or read back from here.
+  managed?: boolean;
 }
 
 function getConfig(db: Database): AppConfigRow {
@@ -39,10 +42,15 @@ export function configRoutes(db: Database, options: ConfigRoutesOptions = {}): R
 
   router.get("/", (_req, res) => {
     const config = getConfig(db);
-    res.json({ baseUrl: config.base_url, token: config.token });
+    // A managed token is never sent to the browser.
+    res.json({ baseUrl: config.base_url, token: options.managed ? "" : config.token, managed: Boolean(options.managed) });
   });
 
   router.put("/", async (req, res) => {
+    if (options.managed) {
+      res.status(409).json({ error: "The connection is set in the add-on's Configuration tab. Change it there and restart the add-on." });
+      return;
+    }
     const { baseUrl, token } = req.body ?? {};
     if (typeof baseUrl !== "string" || !baseUrl.trim() || typeof token !== "string" || !token.trim()) {
       res.status(400).json({ error: "baseUrl and token are required" });

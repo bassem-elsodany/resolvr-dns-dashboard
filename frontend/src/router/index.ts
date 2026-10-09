@@ -4,6 +4,9 @@ declare module "vue-router" {
   interface RouteMeta {
     public?: boolean
     requiresAdmin?: boolean
+    // Only makes sense with Resolvr's own accounts, so it is out of reach
+    // when Home Assistant does the signing in.
+    localAccountsOnly?: boolean
   }
 }
 
@@ -29,8 +32,12 @@ import { useAuthStore } from "../stores/auth"
 // AppShell's <router-view>, so the sidebar/topbar chrome never remounts
 // between pages. Views live under src/views/<feature-area>/, mirroring
 // the sidebar's nav sections (see components/layout/navSections.ts).
+// The page may be served under a path prefix (Home Assistant ingress); the
+// server writes that prefix into <base href>, so routes are relative to it.
+const routerBase = typeof document !== "undefined" ? new URL(document.baseURI).pathname : "/"
+
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(routerBase),
   routes: [
     { path: "/", name: "overview", component: OverviewView },
     { path: "/clients", name: "clients", component: ClientsView },
@@ -44,7 +51,7 @@ export const router = createRouter({
     { path: "/apps", name: "apps", component: AppsView },
     { path: "/server", name: "server", component: ServerInfoView },
     { path: "/sessions", name: "sessions", component: SessionsView },
-    { path: "/users", name: "users", component: UsersView, meta: { requiresAdmin: true } },
+    { path: "/users", name: "users", component: UsersView, meta: { requiresAdmin: true, localAccountsOnly: true } },
     { path: "/connect", name: "connect", component: ConnectView, meta: { requiresAdmin: true } },
     { path: "/login", name: "login", component: LoginView, meta: { public: true } },
   ],
@@ -67,6 +74,9 @@ router.beforeEach(async (to) => {
     return { path: "/" }
   }
   if (to.meta.requiresAdmin && !auth.isAdmin) {
+    return { path: "/" }
+  }
+  if (to.meta.localAccountsOnly && auth.external) {
     return { path: "/" }
   }
   return true

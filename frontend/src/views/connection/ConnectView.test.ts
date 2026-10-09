@@ -64,6 +64,18 @@ describe("ConnectView", () => {
     expect((wrapper.get("#server-url").element as HTMLInputElement).value).toBe("http://10.0.60.60:5380")
     expect((wrapper.get("#api-token").element as HTMLInputElement).value).toBe("existing-token")
   })
+
+  it("shows the connection as read-only, without a token field, when the add-on's Configuration tab owns it", async () => {
+    vi.mocked(getServerConfig).mockResolvedValue({ baseUrl: "http://dns.example.lan:5380", token: "", managed: true })
+    const wrapper = mount(ConnectView)
+    await flushPromises()
+
+    expect(wrapper.find("#connection-managed").exists()).toBe(true)
+    expect(wrapper.text()).toContain("http://dns.example.lan:5380")
+    expect(wrapper.text()).toContain("Configuration")
+    expect(wrapper.find("#api-token").exists()).toBe(false)
+    expect(wrapper.find("#test-connection").exists()).toBe(false)
+  })
 })
 
 function flushPromises() {
