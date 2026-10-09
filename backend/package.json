@@ -2,7 +2,7 @@
   "name": "resolvr-backend",
   "private": true,
   "type": "module",
-  "version": "1.1.0-rc.1",
+  "version": "1.1.0",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
