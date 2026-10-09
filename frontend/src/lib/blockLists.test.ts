@@ -33,11 +33,25 @@ describe("feed groups", () => {
     expect(groupsToLines(groups)).toEqual(["https://a.example.com/t.txt", "# Ads", "https://c.example.net/a.txt"])
   })
 
-  it("drops removed feeds, and groups that end up empty", () => {
+  it("drops removed feeds but keeps their headings", () => {
     const groups = parseFeedLines(LINES)
     groups[1]!.feeds[0]!.state = "removed"
     groups[0]!.feeds[1]!.state = "removed"
-    expect(groupsToLines(groups)).toEqual(["# Threat intel", "https://a.example.com/t.txt"])
+    expect(groupsToLines(groups)).toEqual(["# Threat intel", "https://a.example.com/t.txt", "# Ads"])
+  })
+
+  it("keeps heading-only lines used as dividers, in order, so saving never loses them", () => {
+    const real = ["# --- AdGuard parity ---", "# ---AdGuard DNS filter---", "https://a.example.com/f.txt", "# --- Adult (multiple sources) ---", "# Hagezi NSFW", "https://b.example.org/n.txt"]
+    const groups = parseFeedLines(real)
+    expect(groups.map((g) => g.feeds.length)).toEqual([0, 1, 0, 1])
+    expect(groupsToLines(groups)).toEqual(real)
+    expect(diffFeeds(real, groups).dirty).toBe(false)
+  })
+
+  it("drops a group with no name and no feeds", () => {
+    const groups = parseFeedLines(LINES)
+    groups.push({ id: 99, name: "  ", feeds: [] })
+    expect(groupsToLines(groups)).toEqual(LINES)
   })
 })
 
@@ -54,6 +68,17 @@ describe("diffFeeds", () => {
     const d = diffFeeds(LINES, g)
     expect(d).toMatchObject({ added: 1, removed: 1, dirty: true })
     expect(describeChanges(d)).toBe("1 added, 1 removed")
+  })
+
+  it("counts headings added or removed on their own", () => {
+    const g = parseFeedLines(LINES)
+    g.splice(1, 1)
+    expect(describeChanges(diffFeeds(LINES, g))).toContain("removed")
+    const g2 = parseFeedLines(["# A", "https://a.example.com/t.txt"])
+    g2.push({ id: 50, name: "New divider", feeds: [] })
+    expect(describeChanges(diffFeeds(["# A", "https://a.example.com/t.txt"], g2))).toBe("1 heading added")
+    const d = diffFeeds(["# A", "# B", "https://a.example.com/t.txt"], parseFeedLines(["# A", "https://a.example.com/t.txt"]))
+    expect(describeChanges(d)).toBe("1 heading removed")
   })
 
   it("recognises a rename, and a pure reorder", () => {

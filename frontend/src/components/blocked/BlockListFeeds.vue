@@ -50,6 +50,16 @@ function removeFeed(g: FeedGroup, i: number): void {
   else f.state = "removed"
 }
 
+// A heading with no feeds under it is just a divider; it goes only when
+// the admin removes it.
+function removeGroup(gi: number): void {
+  draft.value.splice(gi, 1)
+}
+
+function liveCount(g: FeedGroup): number {
+  return g.feeds.filter((f) => f.state !== "removed").length
+}
+
 function undoRemove(g: FeedGroup, i: number): void {
   g.feeds[i]!.state = "same"
 }
@@ -168,7 +178,15 @@ watch(
             placeholder="Ungrouped"
             class="group-name min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-[12.5px] font-bold uppercase tracking-wide text-gray-300 enabled:hover:border-border-hover enabled:focus:border-border-hover enabled:focus:bg-background-card"
           />
-          <span class="text-xs text-gray-500">{{ g.feeds.filter((f) => f.state !== "removed").length }} feeds</span>
+          <span class="group-count text-xs text-gray-500">{{ liveCount(g) === 0 ? "Divider" : liveCount(g) === 1 ? "1 feed" : `${liveCount(g)} feeds` }}</span>
+          <button
+            v-if="isAdmin && liveCount(g) === 0"
+            type="button"
+            class="group-remove rounded px-2 py-0.5 text-[12.5px] text-gray-400 hover:bg-background-card"
+            @click="removeGroup(gi)"
+          >
+            Remove heading
+          </button>
         </div>
         <div
           v-for="(f, i) in g.feeds"

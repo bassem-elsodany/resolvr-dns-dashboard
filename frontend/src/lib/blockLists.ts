@@ -45,14 +45,17 @@ export function parseFeedLines(lines: string[]): FeedGroup[] {
   return groups
 }
 
-// What gets saved: removed feeds are dropped, and so are groups left with
-// no feeds (a heading with nothing under it is only clutter).
+// What gets saved: removed feeds are dropped. A heading is kept even when
+// nothing sits under it, because admins use headings on their own as
+// section dividers (for example "# --- AdGuard parity ---"). A group with
+// no name and no feeds is simply gone.
 export function groupsToLines(groups: FeedGroup[]): string[] {
   const out: string[] = []
   for (const g of groups) {
     const kept = g.feeds.filter((f) => f.state !== "removed")
-    if (kept.length === 0) continue
-    if (g.name.trim()) out.push(`# ${g.name.trim()}`)
+    const name = g.name.trim()
+    if (!name && kept.length === 0) continue
+    if (name) out.push(`# ${name}`)
     for (const f of kept) out.push(f.url)
   }
   return out
@@ -62,6 +65,8 @@ export interface FeedChanges {
   added: number
   removed: number
   renamed: number
+  headingsAdded: number
+  headingsRemoved: number
   reordered: boolean
   dirty: boolean
 }
@@ -79,10 +84,13 @@ export function diffFeeds(savedLines: string[], draft: FeedGroup[]): FeedChanges
   const nextHeads = new Set(heads(next))
   const headsAdded = [...nextHeads].filter((h) => !beforeHeads.has(h)).length
   const headsRemoved = [...beforeHeads].filter((h) => !nextHeads.has(h)).length
-  const renamed = added === 0 && removed === 0 ? Math.min(headsAdded, headsRemoved) : 0
+  const onlyHeadings = added === 0 && removed === 0
+  const renamed = onlyHeadings ? Math.min(headsAdded, headsRemoved) : 0
+  const headingsAdded = onlyHeadings ? headsAdded - renamed : 0
+  const headingsRemoved = onlyHeadings ? headsRemoved - renamed : 0
   const dirty = JSON.stringify(next) !== JSON.stringify(before)
-  const reordered = dirty && added === 0 && removed === 0 && renamed === 0
-  return { added, removed, renamed, reordered, dirty }
+  const reordered = dirty && onlyHeadings && renamed === 0 && headingsAdded === 0 && headingsRemoved === 0
+  return { added, removed, renamed, headingsAdded, headingsRemoved, reordered, dirty }
 }
 
 export function describeChanges(c: FeedChanges): string {
@@ -90,8 +98,10 @@ export function describeChanges(c: FeedChanges): string {
   if (c.added) parts.push(`${c.added} added`)
   if (c.removed) parts.push(`${c.removed} removed`)
   if (c.renamed) parts.push(`${c.renamed} renamed`)
+  if (c.headingsAdded) parts.push(`${c.headingsAdded} ${c.headingsAdded === 1 ? "heading" : "headings"} added`)
+  if (c.headingsRemoved) parts.push(`${c.headingsRemoved} ${c.headingsRemoved === 1 ? "heading" : "headings"} removed`)
   if (c.reordered) parts.push("order changed")
-  if (parts.length === 0 && c.dirty) parts.push("headings changed")
+  if (parts.length === 0 && c.dirty) parts.push("changed")
   return parts.join(", ")
 }
 

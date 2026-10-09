@@ -16,6 +16,8 @@ describe("BlockListFeeds", () => {
     expect(w.findAll(".group-name").map((i) => (i.element as HTMLInputElement).value)).toEqual(["Threat intel", "Ads"])
     expect(urls(w)).toHaveLength(3)
     expect(w.findAll(".feed-group")[0]!.text()).toContain("2 feeds")
+    expect(w.findAll(".feed-group")[1]!.text()).toContain("1 feed")
+    expect(w.findAll(".feed-group")[1]!.text()).not.toContain("1 feeds")
   })
 
   it("shows no save bar until something changes", () => {
@@ -136,5 +138,67 @@ describe("BlockListFeeds", () => {
     expect(w.get("#feeds-save-error").text()).toBe("Permission denied.")
     await w.setProps({ lines: ["# Only", "https://only.example.com/x.txt"], saveError: null })
     expect(urls(w)).toEqual(["https://only.example.com/x.txt"])
+  })
+})
+
+describe("BlockListFeeds with divider headings", () => {
+  const REAL = [
+    "# --- AdGuard parity ---",
+    "# ---AdGuard DNS filter---",
+    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+    "# EasyList Privacy",
+    "https://v.firebog.net/hosts/Easyprivacy.txt",
+    "# --- Adult / parental (multiple sources) ---",
+    "# Hagezi NSFW",
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/nsfw.txt",
+  ]
+  const mountReal = () => mount(BlockListFeeds, { props: { lines: REAL, isAdmin: true, saving: false, saveError: null, highlightUrl: null } })
+
+  it("shows heading-only lines as dividers instead of empty feed groups", () => {
+    const w = mountReal()
+    const groups = w.findAll(".feed-group")
+    expect(groups).toHaveLength(5)
+    expect(groups[0]!.find(".group-count").text()).toBe("Divider")
+    expect(groups[1]!.find(".group-count").text()).toBe("1 feed")
+  })
+
+  it("shows exactly the same lines in the text editor, dividers included", async () => {
+    const w = mountReal()
+    await w.get("#feeds-text-mode").trigger("click")
+    expect((w.get("#feeds-text").element as HTMLTextAreaElement).value).toBe(REAL.join("\n"))
+  })
+
+  it("is not treated as changed, and saves every line back unchanged when one feed is added", async () => {
+    const w = mountReal()
+    expect(w.find("#feeds-savebar").exists()).toBe(false)
+    await w.get("#new-feed-url").setValue("https://z.example.com/z.txt")
+    await w.get("form").trigger("submit")
+    await w.get("#feeds-save").trigger("click")
+    const saved = w.emitted("save")![0]![0] as string[]
+    for (const line of REAL) expect(saved).toContain(line)
+    expect(saved).toHaveLength(REAL.length + 1)
+  })
+
+  it("removes a divider only when asked, and says so in the save bar", async () => {
+    const w = mountReal()
+    expect(w.findAll(".group-remove")).toHaveLength(2)
+    await w.findAll(".group-remove")[0]!.trigger("click")
+    expect(w.get("#feeds-savebar").text()).toContain("1 heading removed")
+    await w.get("#feeds-save").trigger("click")
+    expect(w.emitted("save")![0]![0]).not.toContain("# --- AdGuard parity ---")
+    expect(w.emitted("save")![0]![0]).toContain("# --- Adult / parental (multiple sources) ---")
+  })
+
+  it("keeps the heading when every feed under it is removed", async () => {
+    const w = mountReal()
+    await w.findAll(".feed-remove")[0]!.trigger("click") // the only feed in "AdGuard DNS filter"
+    expect(w.findAll(".feed-group")[1]!.find(".group-count").text()).toBe("Divider")
+    await w.get("#feeds-save").trigger("click")
+    expect(w.emitted("save")![0]![0]).toContain("# ---AdGuard DNS filter---")
+  })
+
+  it("offers no remove-heading control to a viewer", () => {
+    const w = mount(BlockListFeeds, { props: { lines: REAL, isAdmin: false, saving: false, saveError: null, highlightUrl: null } })
+    expect(w.find(".group-remove").exists()).toBe(false)
   })
 })
