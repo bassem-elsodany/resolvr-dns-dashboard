@@ -29,6 +29,7 @@ import FlowPanel from "../../components/overview/FlowPanel.vue"
 import DhcpUsagePanel from "../../components/overview/DhcpUsagePanel.vue"
 import ZoneTypesPanel from "../../components/overview/ZoneTypesPanel.vue"
 import CacheSizePanel from "../../components/overview/CacheSizePanel.vue"
+import ClientsTab from "../../components/clients/ClientsTab.vue"
 import { buildFlows, cached, previousRange } from "../../lib/charts"
 import { durationToRange } from "../../lib/dateRange"
 import TopList from "../../components/overview/TopList.vue"
@@ -104,6 +105,7 @@ function computeBlockListFreshness(settings: {
 const TABS = [
   { id: "traffic", label: "Traffic" },
   { id: "resolution", label: "Resolution" },
+  { id: "clients", label: "Clients" },
   { id: "top", label: "Top lists" },
   { id: "infra", label: "Infrastructure" },
 ] as const
@@ -149,6 +151,8 @@ const LOG_SAMPLE_TTL_MS = 60 * 1000
 const logEntries = ref<QueryLogEntry[]>([])
 const logState = ref<"loading" | "ready" | "missing" | "error">("loading")
 let forceNext = false
+// Only the tabs that draw from the log sample ask for it.
+const needsLogSample = computed(() => tab.value === "resolution" || tab.value === "clients")
 
 async function loadLogSample(force: boolean): Promise<void> {
   await queryLogsApp.ensure(connection.credentials)
@@ -199,7 +203,7 @@ async function load(): Promise<void> {
     blockListFreshness.value = computeBlockListFreshness(settingsRes.response)
     const force = forceNext
     forceNext = false
-    if (tab.value === "resolution") void loadLogSample(force)
+    if (needsLogSample.value) void loadLogSample(force)
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load dashboard stats."
   } finally {
@@ -279,9 +283,9 @@ const { liveOn, toggle: toggleLive } = useLivePolling(() => load(), 5000, "overv
 
 onMounted(load)
 watch(() => timeRange.selected, load)
-// Opening Resolution is what asks for the log sample (it is a large request).
+// Opening Resolution or Clients is what asks for the log sample (it is a large request).
 watch(tab, (t) => {
-  if (t === "resolution" && connection.isConfigured) void loadLogSample(false)
+  if ((t === "resolution" || t === "clients") && connection.isConfigured) void loadLogSample(false)
 })
 watch(
   () => refresh.tick,
@@ -416,6 +420,15 @@ watch(
           </div>
           <FlowPanel :flows="flows" :state="logState" />
         </div>
+
+        <ClientsTab
+          v-else-if="tab === 'clients'"
+          :stats="stats.stats"
+          :prev-stats="prevStats"
+          :duration="timeRange.selected"
+          :log-entries="logEntries"
+          :log-state="logState"
+        />
 
         <div v-else-if="tab === 'top'" class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
           <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" filter-key="client" />
