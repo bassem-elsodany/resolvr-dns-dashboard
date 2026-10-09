@@ -55,7 +55,7 @@ const hostInsight = ref<{
   upstreamBlocked: number
 } | null>(null)
 
-const { liveOn, toggle: toggleLive } = useLivePolling(() => loadTable())
+const { liveOn, toggle: toggleLive } = useLivePolling(() => loadTable(), 5000, "query-logs")
 
 // Matches the wireframe's "Showing 1–10 of N" footer wording.
 const rangeStart = computed(() => (totalEntries.value === 0 ? 0 : (pageNumber.value - 1) * ENTRIES_PER_PAGE + 1))
