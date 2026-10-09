@@ -19,6 +19,8 @@ export interface NavItem {
   label: string
   icon: NavIconName
   adminOnly?: boolean
+  // Hidden when Home Assistant does the signing in (there are no accounts to manage).
+  localAccountsOnly?: boolean
 }
 
 export interface NavSection {
@@ -55,7 +57,7 @@ export const navSections: NavSection[] = [
       { to: "/apps", label: "Apps", icon: "apps" },
       { to: "/server", label: "Server Info", icon: "server" },
       { to: "/sessions", label: "Sessions", icon: "sessions" },
-      { to: "/users", label: "Users", icon: "users", adminOnly: true },
+      { to: "/users", label: "Users", icon: "users", adminOnly: true, localAccountsOnly: true },
     ],
   },
 ]

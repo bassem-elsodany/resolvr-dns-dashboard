@@ -2,9 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="alternate icon" href="/favicon.ico" sizes="any" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Everything below is relative to this, so the app also works under a path prefix
+         (Home Assistant ingress). The server rewrites it per request; at the site root it stays "/". -->
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="alternate icon" href="favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Resolvr</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -16,7 +19,7 @@
   </head>
   <body>
     <div id="app"></div>
-    <script src="/env-config.js"></script>
+    <script src="env-config.js"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

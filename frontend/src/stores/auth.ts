@@ -12,6 +12,8 @@ export const useAuthStore = defineStore("auth", () => {
 
   const isAuthenticated = computed(() => user.value !== null)
   const isAdmin = computed(() => user.value?.role === "admin")
+  // Signed in by Home Assistant rather than with a Resolvr account.
+  const external = computed(() => user.value?.external === true)
 
   async function checkSession(): Promise<void> {
     try {
@@ -43,5 +45,5 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  return { user, checked, error, isAuthenticated, isAdmin, checkSession, login, logout }
+  return { user, checked, error, isAuthenticated, isAdmin, external, checkSession, login, logout }
 })

@@ -56,3 +56,36 @@ describe("router auth guard", () => {
     expect(router.currentRoute.value.path).toBe("/")
   })
 })
+
+describe("router when Home Assistant signs the user in", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(fetchMe).mockReset()
+  })
+
+  it("keeps the user away from Users, which only makes sense with Resolvr's own accounts", async () => {
+    vi.mocked(fetchMe).mockResolvedValue({ id: 0, username: "Bassem", role: "admin", external: true })
+    await router.push("/zones")
+    await router.push("/users")
+    expect(router.currentRoute.value.path).toBe("/")
+  })
+
+  it("still lets that user into the other admin page", async () => {
+    vi.mocked(fetchMe).mockResolvedValue({ id: 0, username: "Bassem", role: "admin", external: true })
+    await router.push("/connect")
+    expect(router.currentRoute.value.path).toBe("/connect")
+  })
+})
+
+describe("router base", () => {
+  it("is the path prefix the server wrote into <base href>", async () => {
+    const base = document.createElement("base")
+    base.href = "http://homeassistant.local:8123/api/hassio_ingress/aB3-_x9/"
+    document.head.appendChild(base)
+    vi.resetModules()
+    const mod = await import("./index")
+    expect(mod.router.options.history.base).toBe("/api/hassio_ingress/aB3-_x9")
+    base.remove()
+  })
+})
+
