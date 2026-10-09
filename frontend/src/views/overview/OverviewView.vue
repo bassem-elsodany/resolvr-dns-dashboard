@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue"
+import { ref, computed, onMounted, watch } from "vue"
+import { useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
@@ -14,12 +15,17 @@ import {
 } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import { useLivePolling } from "../../composables/useLivePolling"
-import StatTiles from "../../components/overview/StatTiles.vue"
+import TrendTiles from "../../components/overview/TrendTiles.vue"
 import QueriesChart from "../../components/overview/QueriesChart.vue"
+import ChartPanel from "../../components/charts/ChartPanel.vue"
+import DonutChart, { type DonutItem } from "../../components/charts/DonutChart.vue"
+import TypeBars from "../../components/charts/TypeBars.vue"
+import { previousRange } from "../../lib/charts"
 import TopList from "../../components/overview/TopList.vue"
 import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
+const router = useRouter()
 const auth = useAuthStore()
 // Time range is a single global control in the topbar (AppShell.vue),
 // not a per-page copy — the wireframe puts it there once and Overview
@@ -30,6 +36,29 @@ const refresh = useRefreshStore()
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const stats = ref<DashboardStatsResult["response"] | null>(null)
+// Totals for the window just before the selected one, for the tiles'
+// "vs previous" change. Cached per range so a Live refresh every few
+// seconds does not double the number of calls for data that barely moves.
+const prevStats = ref<DashboardStatsResult["response"]["stats"] | null>(null)
+let prevCache: { duration: string; at: number; stats: DashboardStatsResult["response"]["stats"] | null } | null = null
+const PREV_TTL_MS = 5 * 60 * 1000
+
+async function loadPrevious(): Promise<DashboardStatsResult["response"]["stats"] | null> {
+  const duration = timeRange.selected
+  if (prevCache && prevCache.duration === duration && Date.now() - prevCache.at < PREV_TTL_MS) return prevCache.stats
+  const range = previousRange(duration)
+  let result: DashboardStatsResult["response"]["stats"] | null = null
+  if (range) {
+    try {
+      const res = await getDashboardStats("Custom", connection.credentials, { utc: true, ...range })
+      result = res.response.stats
+    } catch {
+      // The comparison is a nicety; the page works without it.
+    }
+  }
+  prevCache = { duration, at: Date.now(), stats: result }
+  return result
+}
 const rateLimitedClient = ref<TopClientEntry | null>(null)
 const blockListFreshness = ref<{ overdue: boolean; message: string } | null>(null)
 
@@ -62,14 +91,16 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const [statsRes, rateLimitedRes, settingsRes] = await Promise.all([
+    const [statsRes, rateLimitedRes, settingsRes, prev] = await Promise.all([
       getDashboardStats(timeRange.selected, connection.credentials, { utc: true }),
       getTopStats("TopClients", timeRange.selected, connection.credentials, {
         onlyRateLimitedClients: true,
         limit: 1,
       }),
       getSettings(connection.credentials),
+      loadPrevious(),
     ])
+    prevStats.value = prev
     stats.value = statsRes.response
     rateLimitedClient.value = rateLimitedRes.response.topClients?.[0] ?? null
     blockListFreshness.value = computeBlockListFreshness(settingsRes.response)
@@ -96,6 +127,57 @@ async function onForceUpdateBlockLists(): Promise<void> {
     updatingBlockLists.value = false
   }
 }
+
+// Clicking a slice, bar or selection jumps to Query Logs with that
+// filter applied. Slices with no filter (Dropped queries are not logged)
+// are display-only.
+const pathItems = computed<DonutItem[]>(() => {
+  const s = stats.value?.stats
+  if (!s) return []
+  return [
+    { label: "Cached", value: s.totalCached, color: "rgb(var(--color-chart-aqua))", filter: "Cached" },
+    { label: "Recursive", value: s.totalRecursive, color: "rgb(var(--color-chart-blue))", filter: "Recursive" },
+    { label: "Blocked", value: s.totalBlocked, color: "rgb(var(--color-chart-red))", filter: "Blocked" },
+    { label: "Authoritative", value: s.totalAuthoritative, color: "rgb(var(--color-chart-violet))", filter: "Authoritative" },
+    { label: "Dropped", value: s.totalDropped, color: "rgb(var(--color-chart-gray))", filter: "" },
+  ]
+})
+
+const outcomeItems = computed<DonutItem[]>(() => {
+  const s = stats.value?.stats
+  if (!s) return []
+  return [
+    { label: "No error", value: s.totalNoError, color: "rgb(var(--color-chart-blue))", filter: "NoError" },
+    { label: "NXDomain", value: s.totalNxDomain, color: "rgb(var(--color-chart-orange))", filter: "NxDomain" },
+    { label: "Server failure", value: s.totalServerFailure, color: "rgb(var(--color-chart-violet))", filter: "ServerFailure" },
+    { label: "Refused", value: s.totalRefused, color: "rgb(var(--color-chart-gray))", filter: "Refused" },
+  ]
+})
+
+function openLogs(query: Record<string, string>): void {
+  void router.push({ path: "/logs", query })
+}
+
+function onPathSelect(item: DonutItem): void {
+  if (item.filter) openLogs({ responseType: item.filter })
+}
+
+function onOutcomeSelect(item: DonutItem): void {
+  if (item.filter) openLogs({ rcode: item.filter })
+}
+
+// The stats chart folds rare record types into "Other", which is not a
+// value the log filter understands.
+function onTypeSelect(label: string): void {
+  if (label !== "Other") openLogs({ qtype: label })
+}
+
+const typeRows = computed(() => {
+  const c = stats.value?.queryTypeChartData
+  if (!c) return { labels: [] as string[], values: [] as number[] }
+  const pairs = c.labels.map((label, i) => ({ label, value: c.datasets[0]?.data[i] ?? 0 })).sort((a, b) => b.value - a.value)
+  return { labels: pairs.map((p) => p.label), values: pairs.map((p) => p.value) }
+})
 
 const { liveOn, toggle: toggleLive } = useLivePolling(() => load())
 
@@ -174,36 +256,24 @@ watch(
         </div>
       </div>
 
-      <StatTiles :stats="stats.stats" class="mb-5" />
+      <TrendTiles :stats="stats.stats" :prev="prevStats" :chart="stats.mainChartData" :duration="timeRange.selected" class="mb-3.5" />
 
-      <div class="mb-5 grid grid-cols-1 gap-3.5 lg:grid-cols-[1.7fr_1fr]">
-        <div class="rounded-lg border border-border bg-background-elevated p-4">
-          <div class="mb-2 text-[12.5px] font-semibold">Queries over time</div>
+      <div class="mb-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-12">
+        <ChartPanel title="Queries over time" hint="Select a window on the chart to zoom in or open it in Query Logs." class="lg:col-span-8">
           <QueriesChart :chart="stats.mainChartData" />
-        </div>
-        <div class="rounded-lg border border-border bg-background-elevated p-4">
-          <div class="mb-2 text-[12.5px] font-semibold">Query types</div>
-          <div v-if="stats.queryTypeChartData" class="flex flex-col gap-2">
-            <div
-              v-for="(label, i) in stats.queryTypeChartData.labels"
-              :key="label"
-              class="flex items-center gap-2 text-[11px]"
-            >
-              <span class="w-12 flex-none font-mono text-gray-500">{{ label }}</span>
-              <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-background-hover">
-                <div
-                  class="h-full rounded-full bg-accent"
-                  :style="{
-                    width: `${(stats.queryTypeChartData.datasets[0]!.data[i]! / Math.max(1, ...stats.queryTypeChartData.datasets[0]!.data)) * 100}%`,
-                  }"
-                />
-              </div>
-              <span class="w-10 text-right tabular-nums text-gray-500">{{
-                stats.queryTypeChartData.datasets[0]!.data[i]
-              }}</span>
-            </div>
-          </div>
-        </div>
+        </ChartPanel>
+        <ChartPanel title="Where answers come from" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
+          <DonutChart id="path-donut" :items="pathItems" center-sub="queries" @select="onPathSelect" />
+        </ChartPanel>
+      </div>
+
+      <div class="mb-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-12">
+        <ChartPanel title="Response outcomes" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
+          <DonutChart id="outcome-donut" :items="outcomeItems" center-sub="responses" @select="onOutcomeSelect" />
+        </ChartPanel>
+        <ChartPanel title="Query types" hint="Click a bar to filter Query Logs." class="lg:col-span-4">
+          <TypeBars :labels="typeRows.labels" :values="typeRows.values" @select="onTypeSelect" />
+        </ChartPanel>
       </div>
 
       <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">

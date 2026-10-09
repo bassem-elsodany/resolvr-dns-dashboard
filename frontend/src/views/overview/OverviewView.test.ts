@@ -56,6 +56,7 @@ function makeRouter() {
     routes: [
       { path: "/", component: OverviewView },
       { path: "/clients", component: { template: "<div>clients</div>" } },
+      { path: "/logs", component: { template: "<div>logs</div>" } },
       { path: "/connect", component: { template: "<div>connect</div>" } },
     ],
   })
@@ -104,6 +105,63 @@ describe("OverviewView", () => {
     expect(wrapper.text()).toContain("10.0.10.30")
     expect(wrapper.text()).toContain("pool.ntp.org")
     expect(wrapper.text()).toContain("sessions.bugsnag.com")
+  })
+
+  it("compares against the previous period with one extra stats call", async () => {
+    vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+    vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+    vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+    await mountConnected()
+    await flushPromises()
+
+    const custom = vi.mocked(getDashboardStats).mock.calls.filter((c) => c[0] === "Custom")
+    expect(custom).toHaveLength(1)
+    expect(custom[0]![2]).toEqual(expect.objectContaining({ start: expect.any(String), end: expect.any(String) }))
+  })
+
+  it("still renders when the previous-period call fails", async () => {
+    vi.mocked(getDashboardStats).mockImplementation(async (type) => {
+      if (type === "Custom") throw new Error("boom")
+      return baseStats
+    })
+    vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+    vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("5,133")
+    expect(wrapper.find("#overview-error").exists()).toBe(false)
+  })
+
+  it("jumps to Query Logs filtered by the slice that was clicked", async () => {
+    vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+    vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+    vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+    const router = wrapper.vm.$router
+
+    await wrapper.get("#path-donut").findAll(".donut-row")[0]!.trigger("click") // Cached
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe("/logs")
+    expect(router.currentRoute.value.query).toEqual({ responseType: "Cached" })
+
+    await router.push("/")
+    await wrapper.get("#outcome-donut").findAll(".donut-row")[1]!.trigger("click") // NXDomain
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ rcode: "NxDomain" })
+  })
+
+  it("jumps to Query Logs filtered by a clicked query type", async () => {
+    vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+    vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+    vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+    const { wrapper } = await mountConnected()
+    await flushPromises()
+
+    await wrapper.get(".type-row").trigger("click")
+    await flushPromises()
+    expect(wrapper.vm.$router.currentRoute.value.query).toEqual({ qtype: "A" })
   })
 
   it("refetches stats when the shared time-range store changes (the control now lives in AppShell's topbar, not this page)", async () => {
