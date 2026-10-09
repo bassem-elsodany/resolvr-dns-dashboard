@@ -47,7 +47,7 @@ services:
       # a split-host setup where the backend lives somewhere else.
     ports:
       - "8080:80"
-    environment:
+    # environment:
       # Unset by default (falls back to the behavior above). Set this
       # instead if you're putting this app behind your own reverse
       # proxy that forwards /api somewhere other than "this address,
