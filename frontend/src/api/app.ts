@@ -40,6 +40,8 @@ export interface CurrentUser {
   id: number
   username: string
   role: UserRole
+  // Home Assistant signed this user in (add-on mode): no Resolvr account.
+  external?: boolean
 }
 
 export interface AppUser {
@@ -73,7 +75,7 @@ export function getStatus(): Promise<ServerStatus> {
   return call("/api/status")
 }
 
-export function getServerConfig(): Promise<{ baseUrl: string; token: string }> {
+export function getServerConfig(): Promise<{ baseUrl: string; token: string; managed?: boolean }> {
   return call("/api/config")
 }
 

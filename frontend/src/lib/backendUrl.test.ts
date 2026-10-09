@@ -61,4 +61,31 @@ describe("resolveBackendUrl", () => {
 
     expect(resolveBackendUrl()).toBe("http://192.168.1.50:8787")
   })
+
+  describe("same-origin mode (single container and Home Assistant add-on)", () => {
+    afterEach(() => {
+      document.querySelectorAll("base").forEach((b) => b.remove())
+    })
+
+    it("uses the page's own address, with no port guessing", async () => {
+      window.__RESOLVR_ENV__ = { SAME_ORIGIN: true }
+      const { resolveBackendUrl } = await import("./backendUrl")
+      expect(resolveBackendUrl()).toBe(window.location.origin)
+    })
+
+    it("keeps the path prefix Home Assistant's ingress puts in front of the app", async () => {
+      const base = document.createElement("base")
+      base.href = "http://homeassistant.local:8123/api/hassio_ingress/aB3-_x9/"
+      document.head.appendChild(base)
+      window.__RESOLVR_ENV__ = { SAME_ORIGIN: true }
+      const { resolveBackendUrl } = await import("./backendUrl")
+      expect(resolveBackendUrl()).toBe("http://homeassistant.local:8123/api/hassio_ingress/aB3-_x9")
+    })
+
+    it("wins over a BACKEND_URL set in the same environment", async () => {
+      window.__RESOLVR_ENV__ = { SAME_ORIGIN: true, BACKEND_URL: "https://elsewhere.example.com" }
+      const { resolveBackendUrl } = await import("./backendUrl")
+      expect(resolveBackendUrl()).toBe(window.location.origin)
+    })
+  })
 })

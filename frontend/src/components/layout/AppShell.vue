@@ -137,7 +137,7 @@ function navBadgeClass(to: string): string {
           {{ section.label }}
         </div>
         <router-link
-          v-for="item in section.items.filter((i) => !i.adminOnly || auth.isAdmin)"
+          v-for="item in section.items.filter((i) => (!i.adminOnly || auth.isAdmin) && !(i.localAccountsOnly && auth.external))"
           :key="item.to"
           :to="item.to"
           class="nav-link flex min-h-[33px] items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-gray-400 transition-colors hover:bg-background-hover hover:text-fg"
@@ -188,6 +188,7 @@ function navBadgeClass(to: string): string {
         <div v-if="auth.user" class="flex items-center justify-between gap-2 px-1 py-0.5">
           <span class="truncate text-[11.5px] text-gray-500" :title="auth.user.username">{{ auth.user.username }}</span>
           <button
+            v-if="!auth.external"
             id="logout-button"
             type="button"
             class="flex-none text-[11.5px] font-semibold text-accent"

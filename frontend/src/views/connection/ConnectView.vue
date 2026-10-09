@@ -6,6 +6,9 @@ import { getServerConfig } from "../../api/app"
 const connection = useConnectionStore()
 const baseUrlInput = ref("")
 const tokenInput = ref("")
+// Set when the connection comes from the Home Assistant add-on's
+// Configuration tab, which then owns it.
+const managed = ref(false)
 
 // Loads the currently saved connection details (this page is
 // admin-only — see the router guard — so it's safe to fetch the raw
@@ -15,6 +18,7 @@ onMounted(async () => {
     const config = await getServerConfig()
     baseUrlInput.value = config.baseUrl
     tokenInput.value = config.token
+    managed.value = config.managed === true
   } catch {
     // No config saved yet, or it couldn't be loaded — leave the form
     // blank rather than blocking the page on it.
@@ -38,7 +42,16 @@ async function onTestConnection() {
       dashboard, not just this browser.
     </p>
 
-    <form class="mt-8 flex flex-col gap-4" @submit.prevent="onTestConnection">
+    <div v-if="managed" id="connection-managed" class="mt-8 rounded-lg border border-border bg-background-card px-4 py-3.5 text-sm">
+      <div class="text-xs font-semibold text-gray-500">Server URL</div>
+      <div class="mt-0.5 font-mono">{{ baseUrlInput }}</div>
+      <p class="mt-3 text-gray-500">
+        This connection is set in the add-on's <b class="text-fg">Configuration</b> tab in Home Assistant, together with the API token.
+        Change it there and restart the add-on.
+      </p>
+    </div>
+
+    <form v-else class="mt-8 flex flex-col gap-4" @submit.prevent="onTestConnection">
       <div class="flex flex-col gap-1.5">
         <label for="server-url" class="text-xs font-semibold text-gray-500">Server URL</label>
         <input

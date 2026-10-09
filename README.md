@@ -137,7 +137,20 @@ If you're instead putting the frontend behind your own reverse proxy — one tha
 
 Unlike `VITE_BACKEND_URL`, this is read at container start (see `docker/docker-entrypoint.sh`), so it works with the pre-built image too — no rebuild needed, and it can differ per deployment.
 
-### Option 3: Standalone (without Docker)
+### Option 3: a single container
+
+The API can also serve the web app, so Resolvr runs as one container instead of two. This is the image the Home Assistant add-on uses.
+
+```bash
+curl -O https://raw.githubusercontent.com/bassem-elsodany/resolvr-dns-dashboard/main/docker/docker-compose.single.yml
+docker compose -f docker-compose.single.yml up -d
+```
+
+Open `http://<this-machine>:8080` and sign in with the account in the file (change the passwords). The image is `ghcr.io/bassem-elsodany/resolvr` (amd64 and arm64), tagged with each release version.
+
+When Resolvr runs as a Home Assistant add-on it needs no login: Home Assistant already signed you in, and the Technitium address and API token are set in the add-on's Configuration tab.
+
+### Option 4: Standalone (without Docker)
 
 Useful for local development, or if you'd rather run the two services with your own process manager (systemd, pm2, etc.) than with Docker.
 

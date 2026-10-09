@@ -8,11 +8,17 @@ import { authRoutes } from "./routes/authRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
 import { configRoutes, statusRoute } from "./routes/configRoutes.js";
 import { actionRoutes } from "./routes/actionRoutes.js";
+import { serveFrontend } from "./frontend.js";
+import type { AddonMode } from "./addon.js";
 
 export interface CreateAppOptions {
   frontendOrigin?: string;
   fetchImpl?: typeof fetch;
   db?: import("better-sqlite3").Database;
+  // Set when running as a Home Assistant add-on (see addon.ts).
+  addon?: AddonMode | null;
+  // Directory of the built web app to serve from this same process.
+  staticDir?: string;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -36,7 +42,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use(cors({ origin: frontendOrigin ?? true, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
-  app.use(attachUser(db));
+  app.use(attachUser(db, { trustedIngressPeers: options.addon?.trustedPeers }));
 
   // Docker deployments have nothing else scraping request activity, so
   // without this `docker logs` shows nothing at all for the backend
@@ -54,8 +60,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   app.use("/api/auth", authRoutes(db));
-  app.use("/api/users", requireAdmin, userRoutes(db));
-  app.use("/api/config", requireAdmin, configRoutes(db, { fetchImpl }));
+  if (options.addon) {
+    // Home Assistant owns sign-in, so there are no Resolvr accounts to manage.
+    app.use("/api/users", (_req, res) => {
+      res.status(404).json({ error: "Users are managed by Home Assistant." });
+    });
+  } else {
+    app.use("/api/users", requireAdmin, userRoutes(db));
+  }
+  app.use("/api/config", requireAdmin, configRoutes(db, { fetchImpl, managed: options.addon?.managed ?? false }));
   app.get("/api/status", requireAuth, statusRoute(db, { fetchImpl }));
   app.use("/api/actions", requireAdmin, actionRoutes(db, { fetchImpl }));
 
@@ -105,6 +118,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
       res.status(502).json({ error: `Could not reach Technitium server: ${(err as Error).message}` });
     }
   });
+
+  // Last, so every API path above wins over the web app's catch-all.
+  if (options.staticDir) serveFrontend(app, options.staticDir);
 
   return app;
 }

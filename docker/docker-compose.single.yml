@@ -1,0 +1,22 @@
+# One container instead of two: the API also serves the web app.
+#   docker compose -f docker/docker-compose.single.yml up -d
+# Then open http://<this-machine>:8080 and sign in with the account below.
+services:
+  resolvr:
+    image: ghcr.io/bassem-elsodany/resolvr:latest
+    pull_policy: always
+    ports:
+      - "8080:8787"
+    environment:
+      - DB_PATH=/app/data/resolvr.db
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=change-me-on-first-login
+      - VIEWER_USERNAME=viewer
+      - VIEWER_PASSWORD=change-me-on-first-login
+      # - COOKIE_SECURE=true   # only if this is behind your own TLS proxy
+    volumes:
+      - resolvr-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  resolvr-data:

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type { Database } from "better-sqlite3";
 import type { NextFunction, Request, Response } from "express";
 import type { UserRole, UserRow } from "./db.js";
+import { normalizePeer } from "./addon.js";
 
 export const SESSION_COOKIE = "resolvr_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -11,6 +12,9 @@ export interface SessionUser {
   id: number;
   username: string;
   role: UserRole;
+  // Set for a user Home Assistant already signed in (add-on mode): there is
+  // no Resolvr account behind it, so there is no password and no logout.
+  external?: boolean;
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
@@ -81,13 +85,38 @@ export interface AuthedRequest extends Request {
   user?: SessionUser;
 }
 
+export interface AttachUserOptions {
+  // Add-on mode: requests from these addresses (the Supervisor's ingress
+  // proxy) are already authenticated by Home Assistant. Judged by the
+  // connection's real peer address, never by a header a client could set.
+  trustedIngressPeers?: ReadonlySet<string>;
+}
+
+const MAX_NAME = 64;
+
+function ingressUser(req: AuthedRequest): SessionUser {
+  const pick = (h: string): string | null => {
+    const v = req.headers[h];
+    const s = Array.isArray(v) ? v[0] : v;
+    return s && s.trim() ? s.trim().slice(0, MAX_NAME) : null;
+  };
+  const name = pick("x-remote-user-display-name") ?? pick("x-remote-user-name") ?? "Home Assistant";
+  // The Supervisor only shows the add-on panel to Home Assistant admins.
+  return { id: 0, username: name, role: "admin", external: true };
+}
+
 // Attaches req.user from the session cookie when present and valid —
 // never rejects on its own, so routes that allow anonymous access
 // (there are none yet, but this keeps the middleware composable) can
 // still run. requireAuth/requireAdmin below do the actual gating.
-export function attachUser(db: Database) {
+export function attachUser(db: Database, options: AttachUserOptions = {}) {
+  const peers = options.trustedIngressPeers;
   return (req: AuthedRequest, _res: Response, next: NextFunction) => {
-    req.user = getSessionUser(db, req.cookies?.[SESSION_COOKIE]) ?? undefined;
+    if (peers && peers.has(normalizePeer(req.socket.remoteAddress))) {
+      req.user = ingressUser(req);
+    } else {
+      req.user = getSessionUser(db, req.cookies?.[SESSION_COOKIE]) ?? undefined;
+    }
     next();
   };
 }

@@ -85,6 +85,32 @@ describe("AppShell", () => {
     expect(tag.element.parentElement!.textContent).toContain("Resolvr")
   })
 
+  it("hides Log out and Users when Home Assistant signed the user in", async () => {
+    const auth = useAuthStore()
+    auth.user = { id: 0, username: "Bassem", role: "admin", external: true }
+    auth.checked = true
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    expect(wrapper.text()).toContain("Bassem")
+    expect(wrapper.find("#logout-button").exists()).toBe(false)
+    const links = wrapper.get("#app-sidebar").findAll("a").map((a) => a.text())
+    expect(links).not.toContain("Users")
+    // Still the admin they are: the other admin page stays.
+    expect(links.some((t) => t.includes("Connection Settings"))).toBe(true)
+  })
+
+  it("still shows Log out and Users for an ordinary Resolvr admin", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    expect(wrapper.find("#logout-button").exists()).toBe(true)
+    expect(wrapper.get("#app-sidebar").findAll("a").map((a) => a.text())).toContain("Users")
+  })
+
   it("keeps page content left-aligned next to the sidebar instead of centering it", async () => {
     signInAsAdmin()
     const router = makeRouter()
