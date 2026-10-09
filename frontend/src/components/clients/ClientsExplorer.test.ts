@@ -12,7 +12,7 @@ import { getTopStats, queryLogs, listDhcpLeases, listApps, type QueryLogEntry } 
 import { useConnectionStore } from "../../stores/connection"
 import { clearCache } from "../../lib/charts"
 import { resetKnownForTests } from "../../lib/clients"
-import ClientsTab from "./ClientsTab.vue"
+import ClientsExplorer from "./ClientsExplorer.vue"
 
 const NOW = Date.now()
 const ago = (min: number) => new Date(NOW - min * 60000).toISOString()
@@ -66,7 +66,7 @@ function mockApis() {
   }) as never)
 }
 
-async function mountTab(props: Partial<InstanceType<typeof ClientsTab>["$props"]> = {}, path = "/") {
+async function mountTab(props: Partial<InstanceType<typeof ClientsExplorer>["$props"]> = {}, path = "/") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -75,7 +75,7 @@ async function mountTab(props: Partial<InstanceType<typeof ClientsTab>["$props"]
     ],
   })
   await router.push(path)
-  const wrapper = mount(ClientsTab, {
+  const wrapper = mount(ClientsExplorer, {
     props: { stats, prevStats: { ...stats, totalClients: 10 }, duration: "LastDay", logEntries: [], logState: "ready", ...props },
     global: { plugins: [router] },
   })
@@ -84,7 +84,7 @@ async function mountTab(props: Partial<InstanceType<typeof ClientsTab>["$props"]
   return { wrapper, router }
 }
 
-describe("ClientsTab", () => {
+describe("ClientsExplorer", () => {
   beforeEach(() => {
     clearCache()
     localStorage.clear()

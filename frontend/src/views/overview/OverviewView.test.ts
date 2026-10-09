@@ -193,7 +193,7 @@ describe("OverviewView", () => {
 
     it("keeps the tiles above the tabs and opens on Traffic", async () => {
       const { wrapper } = await mountWithStats()
-      expect(wrapper.findAll('[role="tab"]').map((t) => t.text())).toEqual(["Traffic", "Resolution", "Clients", "Top lists", "Infrastructure"])
+      expect(wrapper.findAll('[role="tab"]').map((t) => t.text())).toEqual(["Traffic", "Resolution", "Top lists", "Infrastructure"])
       expect(wrapper.get("#overview-tab-traffic").attributes("aria-selected")).toBe("true")
       expect(wrapper.find("#queries-chart").exists()).toBe(true)
       expect(wrapper.find(".type-row").exists()).toBe(true)

@@ -160,7 +160,7 @@ const selectedIp = computed<string | null>(() => {
 const selected = computed(() => rows.value.find((r) => r.ip === selectedIp.value) ?? null)
 
 function select(ip: string): void {
-  void router.replace({ query: { ...route.query, tab: "clients", client: ip } })
+  void router.replace({ query: { ...route.query, client: ip } })
 }
 
 // A selection must stay visible, so choosing a client that the current
