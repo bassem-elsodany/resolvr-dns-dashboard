@@ -364,7 +364,12 @@ watch(
 
       <TrendTiles :stats="stats.stats" :prev="prevStats" :chart="stats.mainChartData" :duration="timeRange.selected" class="mb-3.5" />
 
-      <div role="tablist" aria-label="Overview sections" class="mb-3.5 flex gap-1 overflow-x-auto border-b border-border" @keydown="onTabKey">
+      <div
+        role="tablist"
+        aria-label="Overview sections"
+        class="mb-4 flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-background-card p-1.5 sm:inline-flex"
+        @keydown="onTabKey"
+      >
         <button
           v-for="t in TABS"
           :id="`overview-tab-${t.id}`"
@@ -374,8 +379,12 @@ watch(
           :aria-selected="tab === t.id"
           aria-controls="overview-tabpanel"
           :tabindex="tab === t.id ? 0 : -1"
-          class="overview-tab -mb-px whitespace-nowrap border-b-2 px-3.5 py-2 text-[13px] transition-colors"
-          :class="tab === t.id ? 'border-accent font-semibold text-fg' : 'border-transparent text-gray-500 hover:text-fg'"
+          class="overview-tab whitespace-nowrap rounded-lg px-4 py-2 text-sm transition-colors"
+          :class="
+            tab === t.id
+              ? 'bg-accent/15 font-semibold text-accent shadow-[inset_0_0_0_1px_rgb(var(--color-accent)/0.45)]'
+              : 'font-medium text-gray-400 hover:bg-background-hover hover:text-fg'
+          "
           @click="setTab(t.id)"
         >
           {{ t.label }}
