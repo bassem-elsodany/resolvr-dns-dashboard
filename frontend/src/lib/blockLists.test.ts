@@ -6,6 +6,7 @@ import {
   diffFeeds,
   describeChanges,
   validateFeedUrl,
+  findCommaProblems,
   normalizeDomain,
   isValidDomain,
   domainStatus,
@@ -100,6 +101,7 @@ describe("validateFeedUrl", () => {
     expect(validateFeedUrl("ftp://x.example.com/a", [])).toMatch(/web address/)
     expect(validateFeedUrl("example", [])).toMatch(/web address/)
     expect(validateFeedUrl("https://a.example.com/t.txt", ["https://a.example.com/t.txt"])).toMatch(/already/)
+    expect(validateFeedUrl("https://a.example.com/t,x.txt", [])).toMatch(/commas/)
   })
 
   it("accepts http and https feeds", () => {
@@ -218,5 +220,15 @@ describe("history", () => {
     expect(readHistory()).toHaveLength(30)
     localStorage.setItem("resolvr.blockListHistory", "{oops")
     expect(readHistory()).toEqual([])
+  })
+})
+
+describe("findCommaProblems", () => {
+  it("flags headings and addresses with a comma, ignoring removed feeds", () => {
+    const g = parseFeedLines(["# Hagezi, NSFW", "https://a.example.com/x,y.txt", "https://b.example.org/ok.txt"])
+    expect(findCommaProblems(g)).toEqual(['the heading "Hagezi, NSFW"', "https://a.example.com/x,y.txt"])
+    g[0]!.feeds[0]!.state = "removed"
+    expect(findCommaProblems(g)).toEqual(['the heading "Hagezi, NSFW"'])
+    expect(findCommaProblems(parseFeedLines(LINES))).toEqual([])
   })
 })

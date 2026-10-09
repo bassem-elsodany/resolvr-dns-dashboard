@@ -202,3 +202,24 @@ describe("BlockListFeeds with divider headings", () => {
     expect(w.find(".group-remove").exists()).toBe(false)
   })
 })
+
+describe("BlockListFeeds commas", () => {
+  it("blocks saving a heading that contains a comma, and says which one", async () => {
+    const w = mountFeeds()
+    await w.findAll(".group-name")[0]!.setValue("Threat, intel")
+    expect(w.get("#feeds-comma-problem").text()).toContain('the heading "Threat, intel"')
+    expect(w.get("#feeds-save").attributes("disabled")).toBeDefined()
+    expect(w.get("#feeds-save-update").attributes("disabled")).toBeDefined()
+    await w.findAll(".group-name")[0]!.setValue("Threat intel again")
+    expect(w.find("#feeds-comma-problem").exists()).toBe(false)
+    expect(w.get("#feeds-save").attributes("disabled")).toBeUndefined()
+  })
+
+  it("catches a comma that arrives through the text editor", async () => {
+    const w = mountFeeds()
+    await w.get("#feeds-text-mode").trigger("click")
+    await w.get("#feeds-text").setValue("# Ads\nhttps://a.example.com/x,y.txt")
+    await w.get("#feeds-text-apply").trigger("click")
+    expect(w.get("#feeds-comma-problem").text()).toContain("https://a.example.com/x,y.txt")
+  })
+})

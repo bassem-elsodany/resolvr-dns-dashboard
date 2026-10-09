@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from "vue"
 import {
   describeChanges,
   diffFeeds,
+  findCommaProblems,
   groupsToLines,
   newGroupId,
   parseFeedLines,
@@ -24,6 +25,7 @@ const emit = defineEmits<{ (e: "save", lines: string[], updateAfter: boolean): v
 
 const draft = ref<FeedGroup[]>(parseFeedLines(props.lines))
 const changes = computed(() => diffFeeds(props.lines, draft.value))
+const problems = computed(() => findCommaProblems(draft.value))
 defineExpose({ hasChanges: computed(() => changes.value.dirty) })
 
 // A fresh list from the server (after saving, or a refresh) replaces the
@@ -254,13 +256,16 @@ watch(
       id="feeds-savebar"
       class="sticky bottom-3 mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-fg px-3.5 py-2.5 text-background-canvas shadow-lg"
     >
-      <span><b>Unsaved changes:</b> {{ describeChanges(changes) }}</span>
+      <span>
+        <b>Unsaved changes:</b> {{ describeChanges(changes) }}
+        <span v-if="problems.length" id="feeds-comma-problem" class="ml-2 text-warn">Remove the comma from {{ problems[0] }} before saving.</span>
+      </span>
       <span class="ml-auto flex flex-wrap gap-2">
         <button id="feeds-discard" type="button" class="rounded-md border border-background-canvas/45 px-3 py-1 text-[13px]" @click="discard">Discard</button>
-        <button id="feeds-save" type="button" :disabled="saving" class="rounded-md border border-background-canvas/45 px-3 py-1 text-[13px] disabled:opacity-50" @click="save(false)">
+        <button id="feeds-save" type="button" :disabled="saving || problems.length > 0" class="rounded-md border border-background-canvas/45 px-3 py-1 text-[13px] disabled:opacity-50" @click="save(false)">
           {{ saving ? "Saving…" : "Save" }}
         </button>
-        <button id="feeds-save-update" type="button" :disabled="saving" class="rounded-md bg-accent px-3 py-1 text-[13px] font-semibold text-white disabled:opacity-50" @click="save(true)">
+        <button id="feeds-save-update" type="button" :disabled="saving || problems.length > 0" class="rounded-md bg-accent px-3 py-1 text-[13px] font-semibold text-white disabled:opacity-50" @click="save(true)">
           Save and update now
         </button>
       </span>

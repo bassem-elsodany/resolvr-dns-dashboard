@@ -68,6 +68,12 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "urls must be an array of strings" });
       return;
     }
+    // The list is sent as one comma-separated string, so a comma inside an
+    // entry (or a line break) would silently split it into two entries.
+    if (urls.some((u) => /[,\r\n]/.test(u))) {
+      res.status(400).json({ error: "Feed entries cannot contain commas or line breaks." });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });

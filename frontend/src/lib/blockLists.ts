@@ -93,6 +93,17 @@ export function diffFeeds(savedLines: string[], draft: FeedGroup[]): FeedChanges
   return { added, removed, renamed, headingsAdded, headingsRemoved, reordered, dirty }
 }
 
+// The server stores the list as one comma-separated string, so a comma in
+// a heading or address would split it in two. Returns what to fix.
+export function findCommaProblems(groups: FeedGroup[]): string[] {
+  const out: string[] = []
+  for (const g of groups) {
+    if (g.name.includes(",")) out.push(`the heading "${g.name.trim()}"`)
+    for (const f of g.feeds) if (f.state !== "removed" && f.url.includes(",")) out.push(f.url)
+  }
+  return out
+}
+
 export function describeChanges(c: FeedChanges): string {
   const parts: string[] = []
   if (c.added) parts.push(`${c.added} added`)
@@ -108,6 +119,7 @@ export function describeChanges(c: FeedChanges): string {
 export function validateFeedUrl(url: string, existing: string[]): string | null {
   const u = url.trim()
   if (!u) return "Enter the address of a feed."
+  if (u.includes(",")) return "Feed addresses cannot contain commas."
   if (!/^https?:\/\/\S+\.\S+$/i.test(u)) return "That does not look like a web address. It should start with http:// or https://."
   if (existing.includes(u)) return "This feed is already in the list."
   return null

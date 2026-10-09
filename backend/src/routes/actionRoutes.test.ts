@@ -86,6 +86,18 @@ describe("actionRoutes", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("rejects an entry containing a comma or a line break, which would split into two entries upstream", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    const comma = await request(app).put("/api/actions/block-list-urls").send({ urls: ["# Hagezi, NSFW", "https://a.example.com/x.txt"] });
+    const lineBreak = await request(app).put("/api/actions/block-list-urls").send({ urls: ["https://a.example.com/x.txt\nhttps://b.example.com/y.txt"] });
+
+    expect(comma.status).toBe(400);
+    expect(lineBreak.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("adds a domain to the Blocked Zones list", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
     const { app } = testApp(fetchImpl);
