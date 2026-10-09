@@ -27,7 +27,7 @@ vi.mock("../../api/app", async () => {
   return { ...actual, forceUpdateBlockLists: vi.fn() }
 })
 
-import { getDashboardStats, getTopStats, getSettings, TechnitiumApiError } from "../../api/technitium"
+import { getDashboardStats, getTopStats, getSettings, listApps, TechnitiumApiError } from "../../api/technitium"
 import { forceUpdateBlockLists, AppApiError } from "../../api/app"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
@@ -112,12 +112,18 @@ describe("OverviewView", () => {
     expect(getDashboardStats).not.toHaveBeenCalled()
   })
 
+  async function openTab(wrapper: Awaited<ReturnType<typeof mountConnected>>["wrapper"], id: string) {
+    await wrapper.get(`#overview-tab-${id}`).trigger("click")
+    await flushPromises()
+  }
+
   it("renders stat tiles, chart, and top lists from live stats once connected", async () => {
     vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
     const { wrapper } = await mountConnected()
     await flushPromises()
 
     expect(wrapper.text()).toContain("5,133")
+    await openTab(wrapper, "top")
     expect(wrapper.text()).toContain("10.0.10.30")
     expect(wrapper.text()).toContain("pool.ntp.org")
     expect(wrapper.text()).toContain("sessions.bugsnag.com")
@@ -161,6 +167,7 @@ describe("OverviewView", () => {
     const { wrapper } = await mountConnected()
     await flushPromises()
     const router = wrapper.vm.$router
+    await openTab(wrapper, "resolution")
 
     await wrapper.get("#path-donut").findAll(".donut-row")[0]!.trigger("click") // Cached
     await flushPromises()
@@ -171,6 +178,84 @@ describe("OverviewView", () => {
     await wrapper.get("#outcome-donut").findAll(".donut-row")[1]!.trigger("click") // NXDomain
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ rcode: "NxDomain" })
+  })
+
+  describe("tabs", () => {
+    async function mountWithStats() {
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+      vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+      vi.mocked(listApps).mockClear()
+      const m = await mountConnected()
+      await flushPromises()
+      return m
+    }
+
+    it("keeps the tiles above the tabs and opens on Traffic", async () => {
+      const { wrapper } = await mountWithStats()
+      expect(wrapper.findAll('[role="tab"]').map((t) => t.text())).toEqual(["Traffic", "Resolution", "Top lists", "Infrastructure"])
+      expect(wrapper.get("#overview-tab-traffic").attributes("aria-selected")).toBe("true")
+      expect(wrapper.find("#queries-chart").exists()).toBe(true)
+      expect(wrapper.find(".type-row").exists()).toBe(true)
+      // Other groups are not rendered until their tab is open.
+      expect(wrapper.find("#path-donut").exists()).toBe(false)
+      expect(wrapper.text()).not.toContain("Top domains")
+      expect(wrapper.find('[data-tile="total"]').exists()).toBe(true)
+    })
+
+    it("shows only the chosen group, and puts the choice in the URL", async () => {
+      const { wrapper } = await mountWithStats()
+      await openTab(wrapper, "infra")
+      expect(wrapper.vm.$route.query.tab).toBe("infra")
+      expect(wrapper.text()).toContain("Cache size")
+      expect(wrapper.find("#queries-chart").exists()).toBe(false)
+      expect(wrapper.get("#overview-tab-infra").attributes("aria-selected")).toBe("true")
+    })
+
+    it("opens on the tab named in the URL, and ignores an unknown one", async () => {
+      vi.mocked(getDashboardStats).mockResolvedValue(baseStats)
+      vi.mocked(getTopStats).mockResolvedValue({ response: {} })
+      vi.mocked(getSettings).mockResolvedValue({ response: {} } as never)
+      const router = makeRouter()
+      await router.push("/?tab=top")
+      const wrapper = mount(OverviewView, { global: { plugins: [router] } })
+      useConnectionStore().isConfigured = true
+      await flushPromises()
+      expect(wrapper.text()).toContain("Top domains")
+
+      await router.push("/?tab=nonsense")
+      await flushPromises()
+      expect(wrapper.get("#overview-tab-traffic").attributes("aria-selected")).toBe("true")
+    })
+
+    it("remembers the last tab when the page is opened again", async () => {
+      const first = await mountWithStats()
+      await openTab(first.wrapper, "top")
+      first.wrapper.unmount()
+
+      const { wrapper } = await mountWithStats()
+      expect(wrapper.get("#overview-tab-top").attributes("aria-selected")).toBe("true")
+    })
+
+    it("moves between tabs with the arrow keys", async () => {
+      const { wrapper } = await mountWithStats()
+      await wrapper.get("#overview-tab-traffic").trigger("keydown", { key: "ArrowRight" })
+      await flushPromises()
+      expect(wrapper.get("#overview-tab-resolution").attributes("aria-selected")).toBe("true")
+      await wrapper.get("#overview-tab-resolution").trigger("keydown", { key: "ArrowLeft" })
+      await flushPromises()
+      // Wraps around from the first tab to the last.
+      await wrapper.get("#overview-tab-traffic").trigger("keydown", { key: "ArrowLeft" })
+      await flushPromises()
+      expect(wrapper.get("#overview-tab-infra").attributes("aria-selected")).toBe("true")
+    })
+
+    it("only asks for the query-log sample once the Resolution tab is opened", async () => {
+      const { wrapper } = await mountWithStats()
+      expect(listApps).not.toHaveBeenCalled()
+      await openTab(wrapper, "resolution")
+      expect(listApps).toHaveBeenCalled()
+    })
   })
 
   it("jumps to Query Logs filtered by a clicked query type", async () => {

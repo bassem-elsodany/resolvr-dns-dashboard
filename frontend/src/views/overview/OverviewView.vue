@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue"
-import { useRouter } from "vue-router"
+import { ref, computed, nextTick, onMounted, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
@@ -36,6 +36,7 @@ import LiveToggle from "../../components/ui/LiveToggle.vue"
 
 const connection = useConnectionStore()
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const queryLogsApp = useQueryLogsAppStore()
 // Time range is a single global control in the topbar (AppShell.vue),
@@ -97,6 +98,49 @@ function computeBlockListFreshness(settings: {
   }
 }
 
+// The charts are grouped into tabs so the page is not one long scroll.
+// The open tab lives in the URL (?tab=), so a refresh or a shared link
+// lands on the same group, and falls back to the last tab used.
+const TABS = [
+  { id: "traffic", label: "Traffic" },
+  { id: "resolution", label: "Resolution" },
+  { id: "top", label: "Top lists" },
+  { id: "infra", label: "Infrastructure" },
+] as const
+type TabId = (typeof TABS)[number]["id"]
+const TAB_KEY = "resolvr.overviewTab"
+
+function storedTab(): TabId | null {
+  try {
+    const v = localStorage.getItem(TAB_KEY)
+    return TABS.find((t) => t.id === v)?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+const tab = computed<TabId>(() => TABS.find((t) => t.id === route.query.tab)?.id ?? storedTab() ?? "traffic")
+
+function setTab(id: TabId): void {
+  try {
+    localStorage.setItem(TAB_KEY, id)
+  } catch {
+    // Not remembered; the URL still carries the choice.
+  }
+  void router.replace({ query: { ...route.query, tab: id } })
+}
+
+// Left/Right/Home/End move between tabs, as for any tab list.
+function onTabKey(e: KeyboardEvent): void {
+  const i = TABS.findIndex((t) => t.id === tab.value)
+  const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key]
+  if (next === undefined) return
+  e.preventDefault()
+  const target = TABS[(next + TABS.length) % TABS.length]!.id
+  setTab(target)
+  void nextTick(() => document.getElementById(`overview-tab-${target}`)?.focus())
+}
+
 // The response-time and flow panels read one sample of the latest logged
 // queries. It is a single large request, so it is reused for a minute
 // (Live refresh included) and only re-fetched early by the refresh button.
@@ -155,7 +199,7 @@ async function load(): Promise<void> {
     blockListFreshness.value = computeBlockListFreshness(settingsRes.response)
     const force = forceNext
     forceNext = false
-    void loadLogSample(force)
+    if (tab.value === "resolution") void loadLogSample(force)
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load dashboard stats."
   } finally {
@@ -235,6 +279,10 @@ const { liveOn, toggle: toggleLive } = useLivePolling(() => load(), 5000, "overv
 
 onMounted(load)
 watch(() => timeRange.selected, load)
+// Opening Resolution is what asks for the log sample (it is a large request).
+watch(tab, (t) => {
+  if (t === "resolution" && connection.isConfigured) void loadLogSample(false)
+})
 watch(
   () => refresh.tick,
   () => {
@@ -316,35 +364,57 @@ watch(
 
       <TrendTiles :stats="stats.stats" :prev="prevStats" :chart="stats.mainChartData" :duration="timeRange.selected" class="mb-3.5" />
 
-      <div class="mb-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-12">
-        <ChartPanel title="Queries over time" hint="Select a window on the chart to zoom in or open it in Query Logs." class="lg:col-span-8">
-          <QueriesChart :chart="stats.mainChartData" />
-        </ChartPanel>
-        <ChartPanel title="Where answers come from" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
-          <DonutChart id="path-donut" :items="pathItems" center-sub="queries" @select="onPathSelect" />
-        </ChartPanel>
+      <div role="tablist" aria-label="Overview sections" class="mb-3.5 flex gap-1 overflow-x-auto border-b border-border" @keydown="onTabKey">
+        <button
+          v-for="t in TABS"
+          :id="`overview-tab-${t.id}`"
+          :key="t.id"
+          type="button"
+          role="tab"
+          :aria-selected="tab === t.id"
+          aria-controls="overview-tabpanel"
+          :tabindex="tab === t.id ? 0 : -1"
+          class="overview-tab -mb-px whitespace-nowrap border-b-2 px-3.5 py-2 text-[13px] transition-colors"
+          :class="tab === t.id ? 'border-accent font-semibold text-fg' : 'border-transparent text-gray-500 hover:text-fg'"
+          @click="setTab(t.id)"
+        >
+          {{ t.label }}
+        </button>
       </div>
 
-      <div class="mb-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-12">
-        <ChartPanel title="Response outcomes" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
-          <DonutChart id="outcome-donut" :items="outcomeItems" center-sub="responses" @select="onOutcomeSelect" />
-        </ChartPanel>
-        <ChartPanel title="Query types" hint="Click a bar to filter Query Logs." class="lg:col-span-4">
-          <TypeBars :labels="typeRows.labels" :values="typeRows.values" @select="onTypeSelect" />
-        </ChartPanel>
-        <LatencyPanel :rtts="rtts" :sample-size="logEntries.length" :state="logState" class="lg:col-span-4" />
-      </div>
+      <div id="overview-tabpanel" role="tabpanel" :aria-labelledby="`overview-tab-${tab}`">
+        <div v-if="tab === 'traffic'" class="flex flex-col gap-3.5">
+          <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-12">
+            <ChartPanel title="Queries over time" hint="Select a window on the chart to zoom in or open it in Query Logs." class="lg:col-span-8">
+              <QueriesChart :chart="stats.mainChartData" />
+            </ChartPanel>
+            <ChartPanel title="Query types" hint="Click a bar to filter Query Logs." class="lg:col-span-4">
+              <TypeBars :labels="typeRows.labels" :values="typeRows.values" @select="onTypeSelect" />
+            </ChartPanel>
+          </div>
+          <HeatmapPanel />
+        </div>
 
-      <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
-        <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" filter-key="client" />
-        <TopList title="Top domains" :items="stats.topDomains ?? []" tone="ok" filter-key="qname" />
-        <TopList title="Top blocked" :items="stats.topBlockedDomains ?? []" tone="crit" filter-key="qname" />
-      </div>
+        <div v-else-if="tab === 'resolution'" class="flex flex-col gap-3.5">
+          <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-12">
+            <ChartPanel title="Where answers come from" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
+              <DonutChart id="path-donut" :items="pathItems" center-sub="queries" @select="onPathSelect" />
+            </ChartPanel>
+            <ChartPanel title="Response outcomes" hint="Click a slice to filter Query Logs." class="lg:col-span-4">
+              <DonutChart id="outcome-donut" :items="outcomeItems" center-sub="responses" @select="onOutcomeSelect" />
+            </ChartPanel>
+            <LatencyPanel :rtts="rtts" :sample-size="logEntries.length" :state="logState" class="lg:col-span-4" />
+          </div>
+          <FlowPanel :flows="flows" :state="logState" />
+        </div>
 
-      <div class="mt-3.5 flex flex-col gap-3.5">
-        <HeatmapPanel />
-        <FlowPanel :flows="flows" :state="logState" />
-        <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
+        <div v-else-if="tab === 'top'" class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+          <TopList title="Top clients" :items="stats.topClients ?? []" tone="accent" filter-key="client" />
+          <TopList title="Top domains" :items="stats.topDomains ?? []" tone="ok" filter-key="qname" />
+          <TopList title="Top blocked" :items="stats.topBlockedDomains ?? []" tone="crit" filter-key="qname" />
+        </div>
+
+        <div v-else class="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
           <DhcpUsagePanel />
           <ZoneTypesPanel />
           <CacheSizePanel :entries="stats.stats.cachedEntries" />
