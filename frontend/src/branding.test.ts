@@ -1,7 +1,10 @@
+/// <reference types="node" />
 import { describe, it, expect } from "vitest"
 import { existsSync, readFileSync } from "node:fs"
+import { resolve } from "node:path"
 
-const pub = (name: string) => new URL(`../public/${name}`, import.meta.url)
+// Tests run from the frontend folder, where public/ lives.
+const pub = (name: string) => resolve(process.cwd(), "public", name)
 
 describe("browser icons", () => {
   it("are the Resolvr mark, not the Vite template's", () => {
