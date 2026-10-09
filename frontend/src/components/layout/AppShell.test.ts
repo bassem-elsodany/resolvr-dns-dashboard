@@ -72,6 +72,19 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("Connection Settings")
   })
 
+  it("shows the app version as a tag next to the app name", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+
+    const tag = wrapper.get("#app-version")
+    expect(tag.text()).toBe(`v${__APP_VERSION__}`)
+    expect(__APP_VERSION__).toMatch(/^\d+\.\d+\.\d+/)
+    // Same header block as the name, not somewhere else in the sidebar.
+    expect(tag.element.parentElement!.textContent).toContain("Resolvr")
+  })
+
   it("keeps page content left-aligned next to the sidebar instead of centering it", async () => {
     signInAsAdmin()
     const router = makeRouter()

@@ -39,6 +39,14 @@ export default {
         crit: "rgb(var(--color-crit) / <alpha-value>)",
         info: "rgb(var(--color-info) / <alpha-value>)",
         cache: "rgb(var(--color-cache) / <alpha-value>)",
+        chart: {
+          blue: "rgb(var(--color-chart-blue) / <alpha-value>)",
+          aqua: "rgb(var(--color-chart-aqua) / <alpha-value>)",
+          violet: "rgb(var(--color-chart-violet) / <alpha-value>)",
+          red: "rgb(var(--color-chart-red) / <alpha-value>)",
+          orange: "rgb(var(--color-chart-orange) / <alpha-value>)",
+          gray: "rgb(var(--color-chart-gray) / <alpha-value>)",
+        },
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

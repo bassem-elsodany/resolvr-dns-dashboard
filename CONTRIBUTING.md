@@ -39,3 +39,9 @@ See the [Development](README.md#development) and [Configuration](README.md#confi
 ## Releases
 
 Releases are tagged `vMAJOR.MINOR.PATCH`. Pushing a tag publishes versioned Docker images to GHCR. Every merge to `main` also updates the `latest` tag, so pin a version if you need stability.
+
+The version shown next to the app name in the sidebar comes from `frontend/package.json`. To cut a release:
+
+1. In a pull request, bump the version in both services (they share one number):
+   `cd frontend && npm version X.Y.Z --no-git-tag-version`, then the same in `backend/`.
+2. Merge it, then tag that commit `vX.Y.Z` and create the GitHub release.
