@@ -3,6 +3,8 @@
 [![CI](https://github.com/bassem-elsodany/resolvr-dns-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/bassem-elsodany/resolvr-dns-dashboard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+> **Running Home Assistant?** Resolvr is also available as an add-on, with your Home Assistant sign-in and a sidebar entry: [get the add-on](https://github.com/bassem-elsodany/homelab-ha-addons#install) (setup is in [Home Assistant add-on](#home-assistant-add-on) below).
+
 A monitoring dashboard for [Technitium DNS Server](https://technitium.com/dns/) — live query traffic, clients, cache, zones, DHCP, and blocking, with its own login and role-based access, built for people who run a home or small-office DNS resolver and want a clean view into what it's doing without living in Technitium's own admin console.
 
 `dns` · `technitium` · `dns-server` · `dashboard` · `self-hosted` · `homelab` · `monitoring` · `dns-monitoring` · `ad-blocking` · `vue3` · `typescript` · `docker` · `sqlite` · `express`
