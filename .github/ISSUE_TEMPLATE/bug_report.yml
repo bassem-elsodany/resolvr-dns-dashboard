@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Resolvr isn't working as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Image tag (for example `latest` or `0.1.0`) or commit hash
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running it?
+      options:
+        - Docker (pre-built images)
+        - Docker (built from source)
+        - Standalone (Node)
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Backend container logs and browser console output help. Remove tokens and passwords first.
+      render: shell
