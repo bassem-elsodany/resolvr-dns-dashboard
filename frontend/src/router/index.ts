@@ -27,8 +27,7 @@ import ConnectView from "../views/connection/ConnectView.vue"
 import LoginView from "../views/auth/LoginView.vue"
 import { useAuthStore } from "../stores/auth"
 
-// One route per sidebar item in the approved wireframe
-// (https://claude.ai/artifact/KkUP4PePeDz4kVDA7ULDpM). All render inside
+// One route per sidebar item in the approved wireframe. All render inside
 // AppShell's <router-view>, so the sidebar/topbar chrome never remounts
 // between pages. Views live under src/views/<feature-area>/, mirroring
 // the sidebar's nav sections (see components/layout/navSections.ts).
