@@ -4,6 +4,7 @@ import type { Database } from "better-sqlite3";
 import type { NextFunction, Request, Response } from "express";
 import type { UserRole, UserRow } from "./db.js";
 import { normalizePeer } from "./addon.js";
+import { logger, clean } from "./logger.js";
 
 export const SESSION_COOKIE = "resolvr_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -83,6 +84,8 @@ export function clearSessionCookie(res: Response): void {
 
 export interface AuthedRequest extends Request {
   user?: SessionUser;
+  // Set by attachUser when there is no user: why, for the log line on a 401.
+  authProblem?: string;
 }
 
 export interface AttachUserOptions {
@@ -115,14 +118,32 @@ export function attachUser(db: Database, options: AttachUserOptions = {}) {
     if (peers && peers.has(normalizePeer(req.socket.remoteAddress))) {
       req.user = ingressUser(req);
     } else {
-      req.user = getSessionUser(db, req.cookies?.[SESSION_COOKIE]) ?? undefined;
+      const token = req.cookies?.[SESSION_COOKIE] as string | undefined;
+      req.user = getSessionUser(db, token) ?? undefined;
+      if (!req.user) {
+        // Why the request has no user, so a 401 can say so in the log.
+        req.authProblem = token
+          ? "a session cookie came with the request but its session is unknown or has expired"
+          : "no session cookie came with the request";
+      }
     }
     next();
   };
 }
 
+// An unauthenticated request is normal on the login page (the app asks who
+// you are before you have signed in), so that one call is only a debug line.
+// Anything else is worth a warning that says why, and never prints the token.
+function logRejected(req: AuthedRequest, status: number, reason: string): void {
+  const url = clean(req.originalUrl.split("?")[0], 120);
+  const line = `Rejected ${req.method} ${url} (${status}): ${reason}`;
+  if (url === "/api/auth/me") logger.debug(line);
+  else logger.warn(line);
+}
+
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction): void {
   if (!req.user) {
+    logRejected(req, 401, req.authProblem ?? "not signed in");
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
@@ -131,10 +152,12 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
 
 export function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction): void {
   if (!req.user) {
+    logRejected(req, 401, req.authProblem ?? "not signed in");
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
   if (req.user.role !== "admin") {
+    logRejected(req, 403, `${clean(req.user.username)} is a ${req.user.role}, not an admin`);
     res.status(403).json({ error: "Admin role required" });
     return;
   }
