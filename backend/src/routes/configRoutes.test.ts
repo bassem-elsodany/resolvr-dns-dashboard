@@ -49,6 +49,93 @@ describe("configRoutes", () => {
     expect(stored.base_url).toBe("");
   });
 
+  // Technitium's own wording is terse. Say which server answered (so the
+  // admin knows the URL is right and only the token is wrong) and how to
+  // get a token that works.
+  it("explains a rejected token: which server answered, what it said, how to get a valid one", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        server: "dns.example.lan",
+        status: "invalid-token",
+        errorMessage: "Invalid token or session expired.",
+      }),
+    );
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/config").send({ baseUrl: "http://192.168.1.53:5380", token: "bad" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("dns.example.lan");
+    expect(res.body.error).toContain("http://192.168.1.53:5380");
+    expect(res.body.error).toContain("Invalid token or session expired.");
+    expect(res.body.error).toMatch(/Administration.*Sessions.*Create API Token/);
+  });
+
+  // Whatever answers on the URL is not always Technitium's JSON (an HTTPS-only
+  // port, a reverse proxy, a login wall). The admin must see what it really
+  // said, not a JSON parser error.
+  it("shows the upstream status and text when the server answers with something that is not JSON", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response("Client sent an HTTP request to an HTTPS server.", {
+          status: 400,
+          headers: { "content-type": "text/plain" },
+        }),
+      );
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/config").send({ baseUrl: "http://192.168.1.53:53443", token: "abc" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("HTTP 400");
+    expect(res.body.error).toContain("Client sent an HTTP request to an HTTPS server.");
+    expect(res.body.error).not.toMatch(/valid JSON|Unexpected token/);
+  });
+
+  it("shows a plain-text 401 from whatever sits in front of Technitium", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("Not authenticated", { status: 401, headers: { "content-type": "text/plain" } }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/config").send({ baseUrl: "https://dns.example.com", token: "abc" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("HTTP 401");
+    expect(res.body.error).toContain("Not authenticated");
+  });
+
+  it("logs why a connection check failed to stdout, never the token", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("Not authenticated", { status: 401, headers: { "content-type": "text/plain" } }));
+    const { app } = testApp(fetchImpl);
+
+    await request(app).put("/api/config").send({ baseUrl: "https://dns.example.com", token: "super-secret-token" });
+
+    const logged = warn.mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(logged).toContain("https://dns.example.com");
+    expect(logged).toContain("HTTP 401");
+    expect(logged).not.toContain("super-secret-token");
+    warn.mockRestore();
+  });
+
+  // Node's fetch only says "fetch failed"; the reason (refused, wrong
+  // protocol, unknown host) is on `cause` and must reach the admin.
+  it("shows why the server could not be reached, not just \"fetch failed\"", async () => {
+    const cause = Object.assign(new Error("connect ECONNREFUSED 192.168.1.53:5380"), { code: "ECONNREFUSED" });
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("fetch failed", { cause }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).put("/api/config").send({ baseUrl: "http://192.168.1.53:5380", token: "abc" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("http://192.168.1.53:5380");
+    expect(res.body.error).toContain("ECONNREFUSED");
+  });
+
   it("reports unconfigured status when nothing has been saved yet", async () => {
     const { app } = testApp(vi.fn());
 
