@@ -15,4 +15,33 @@ window.__RESOLVR_ENV__ = {
 }
 EOF
 
+# Logging: the same LOG_LEVEL / LOG_REQUESTS the backend reads, so one
+# setting quiets both containers.
+#   LOG_LEVEL     silent | error | warn | info (default) | debug
+#   LOG_REQUESTS  true (default) | false   the per-request access log
+# nginx names its levels differently, so map ours onto its error_log levels.
+# Request lines are written at info and debug only, and never when
+# LOG_REQUESTS is false.
+level=$(printf '%s' "${LOG_LEVEL:-info}" | tr 'A-Z' 'a-z' | tr -d ' ')
+requests=$(printf '%s' "${LOG_REQUESTS:-true}" | tr 'A-Z' 'a-z' | tr -d ' ')
+case "$level" in
+  silent) nginx_level=emerg; access=off ;;
+  error)  nginx_level=error; access=off ;;
+  warn)   nginx_level=warn;  access=off ;;
+  debug)  nginx_level=info;  access=on ;;
+  info)   nginx_level=notice; access=on ;;
+  *)
+    echo "Unknown LOG_LEVEL \"$LOG_LEVEL\"; using \"info\". Use one of: silent, error, warn, info, debug." >&2
+    nginx_level=notice; access=on ;;
+esac
+case "$requests" in
+  false|0|no|off) access=off ;;
+esac
+sed -i -E "s|^(error_log[[:space:]]+[^[:space:]]+)[[:space:]]+[a-z]+;|\1 ${nginx_level};|" /etc/nginx/nginx.conf
+if [ "$access" = "off" ]; then
+  echo "access_log off;" > /etc/nginx/conf.d/00-logging.conf
+else
+  rm -f /etc/nginx/conf.d/00-logging.conf
+fi
+
 exec "$@"

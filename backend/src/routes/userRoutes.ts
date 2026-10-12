@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Database } from "better-sqlite3";
 import { hashPassword } from "../auth.js";
 import type { UserRole, UserRow } from "../db.js";
+import { logger, clean } from "../logger.js";
 
 const VALID_ROLES: UserRole[] = ["admin", "viewer"];
 
@@ -11,6 +12,10 @@ function adminCount(db: Database): number {
 
 function publicUser(row: UserRow) {
   return { id: row.id, username: row.username, role: row.role, createdAt: row.created_at };
+}
+
+function actor(req: unknown): string {
+  return clean((req as { user?: { username?: string } }).user?.username ?? "unknown");
 }
 
 export function userRoutes(db: Database): Router {
@@ -36,8 +41,10 @@ export function userRoutes(db: Database): Router {
         .prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)")
         .run(username.trim(), hashPassword(password), role);
       const row = db.prepare("SELECT * FROM users WHERE id = ?").get(info.lastInsertRowid) as UserRow;
+      logger.info(`User created: ${clean(row.username)} (${row.role}) by ${actor(req)}`);
       res.status(201).json(publicUser(row));
     } catch {
+      logger.warn(`User not created, name already taken: ${clean(username)} (by ${actor(req)})`);
       res.status(409).json({ error: `Username "${username}" is already taken` });
     }
   });
@@ -54,6 +61,7 @@ export function userRoutes(db: Database): Router {
       res.status(404).json({ error: "User not found" });
       return;
     }
+    logger.info(`Password changed for user #${id} by ${actor(req)}`);
     res.json({ status: "ok" });
   });
 
@@ -69,6 +77,7 @@ export function userRoutes(db: Database): Router {
       return;
     }
     db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    logger.info(`User deleted: ${clean(row.username)} (${row.role}) by ${actor(req)}`);
     res.json({ status: "ok" });
   });
 

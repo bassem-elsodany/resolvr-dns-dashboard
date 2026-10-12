@@ -6,6 +6,9 @@ services:
       - "8787:8787"
     environment:
       - PORT=8787
+      # Logging: silent | error | warn | info (default) | debug; LOG_REQUESTS=false
+      # drops the per-request lines; LOG_FORMAT=json writes one JSON object per line.
+      # - LOG_LEVEL=info
       - DB_PATH=/app/data/resolvr.db
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=change-me-on-first-login

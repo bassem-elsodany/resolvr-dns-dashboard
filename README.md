@@ -149,6 +149,9 @@ Set these under the `backend` service (in `docker/docker-compose.yml`, or the pr
 | `FRONTEND_ORIGIN` | *(unset)* | Optional. Unset means the backend accepts whatever origin the browser is actually using — correct by default since this app has no single fixed frontend address (localhost, a LAN IP, a hostname — all work). Set one exact origin here only to lock the app down to a single known address; anything else will then be rejected. |
 | `COOKIE_SECURE` | *(unset, insecure)* | Optional. Unset (or anything other than `true`) means the session cookie is **not** marked `Secure` — required for login to work at all when this app is reached over plain HTTP, which is the normal case for a self-hosted LAN tool. Set to `true` only if you've put this behind your own TLS-terminating reverse proxy; a `Secure` cookie is silently dropped by the browser over plain HTTP, which looks exactly like "login succeeds but every next request says Not authenticated." |
 | `DB_PATH` | `/app/data/resolvr.db` | Where the SQLite file lives, on the `resolvr-data` named volume so it survives rebuilds. |
+| `LOG_LEVEL` | `info` | How much the backend logs: `silent`, `error`, `warn`, `info` or `debug`. See [Logging](#logging). |
+| `LOG_FORMAT` | `text` | `text` for plain lines, or `json` for one JSON object per line (for Loki, Datadog and the like). |
+| `LOG_REQUESTS` | `true` | Set `false` to drop the one-line-per-request access log and keep everything else. |
 
 The frontend image also takes a build argument, `VITE_BACKEND_URL`, left unset by default — the app then targets whatever host served the page, on port 8787, at runtime in the browser. Set it explicitly only for a split-host setup where the backend isn't reachable at that address (it has to be the backend's URL as seen from the *browser*, not from inside the frontend container, since Vite bakes it into the static build at build time).
 
@@ -236,6 +239,38 @@ After signing in:
 
 1. Go to **Connection Settings** (admin only) and point Resolvr at your Technitium server — its base URL and an API token (create one under Technitium's own Administration → Sessions → Create Token, or use a full login token). This is validated against the real server before it's saved, and shared by everyone who signs into this Resolvr instance.
 2. Go to **Users** to change both seeded passwords and add any other accounts — `admin` (full access) or `viewer` (read-only).
+
+## Logging
+
+The backend and the frontend container read the same settings, so one pair of variables quiets both. Set them in the container's environment (`environment:` in the compose file, or `-e` with `docker run`). The Home Assistant add-on takes the same three settings as options (`log_level`, `log_format`, `log_requests`) in its Configuration tab; an environment variable wins if both are set:
+
+| Variable | Values | Default | Applies to |
+|---|---|---|---|
+| `LOG_LEVEL` | `silent`, `error`, `warn`, `info`, `debug` | `info` | backend, frontend |
+| `LOG_REQUESTS` | `true`, `false` | `true` | backend, frontend |
+| `LOG_FORMAT` | `text`, `json` | `text` | backend |
+
+What each level prints:
+
+| Level | Backend | Frontend (nginx) |
+|---|---|---|
+| `silent` | nothing | nothing |
+| `error` | failures, such as Technitium being unreachable | errors |
+| `warn` | + warnings: failed sign-ins, a failed connection check, a refused proxy path, an admin action that did not go through | + warnings |
+| `info` | + startup lines, sign-ins and sign-outs, user and connection changes, one audit line per admin action (who, what, which node, result), and one line per request | + one access line per request, and notices |
+| `debug` | + the container healthcheck and the time each Technitium call took | + nginx's informational messages |
+
+To cut the noise but keep the useful lines, use `LOG_LEVEL=warn`, or keep `info` and set `LOG_REQUESTS=false`. The healthcheck (`/healthz`) is only logged at `debug`. Passwords, session tokens and the Technitium API token are never written to the log, and neither are the domains, URLs or request bodies of admin actions. An unrecognised value falls back to the default and says so at startup.
+
+```yaml
+services:
+  backend:
+    environment:
+      - LOG_LEVEL=warn
+  frontend:
+    environment:
+      - LOG_LEVEL=warn
+```
 
 ## Development
 

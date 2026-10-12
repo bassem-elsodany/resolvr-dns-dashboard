@@ -14,6 +14,9 @@ services:
       # down to a single known frontend address.
       # - FRONTEND_ORIGIN=http://localhost:8080
       - PORT=8787
+      # Logging: silent | error | warn | info (default) | debug; LOG_REQUESTS=false
+      # drops the per-request lines; LOG_FORMAT=json writes one JSON object per line.
+      # - LOG_LEVEL=info
       # SQLite file for this dashboard's own users/sessions/connection
       # config — lives on the named volume below, not inside the DNS
       # server. Change ADMIN_PASSWORD before any non-local deployment.
