@@ -11,9 +11,12 @@ export interface ClientRow {
   blocked: number
   rateLimited: boolean
   lastSeen: string | null
+  // Queries answered by each cluster node (node name to count). Only set
+  // when the page shows a whole cluster.
+  byNode?: Record<string, number>
 }
 
-export type ClientFilter = "all" | "heavy" | "limited" | "new" | "quiet" | "attention"
+export type ClientFilter = "all" | "heavy" | "limited" | "new" | "quiet" | "attention" | "single"
 export type ClientSort = "queries" | "blocked" | "name" | "recent"
 
 // Blocking above this share counts as "heavy", but only once there are
@@ -36,6 +39,16 @@ export function isQuiet(c: ClientRow, now: number = Date.now()): boolean {
   return now - new Date(c.lastSeen).getTime() >= QUIET_AFTER_MS
 }
 
+// The only node that answered this client, when the cluster has several but
+// this client never used the others: usually a device configured with a
+// single DNS server, so it gets no benefit from the second one.
+export function singleNode(c: ClientRow): string | null {
+  const nodes = c.byNode ? Object.entries(c.byNode) : []
+  if (nodes.length < 2) return null
+  const used = nodes.filter(([, n]) => n > 0)
+  return used.length === 1 ? used[0]![0] : null
+}
+
 export function displayName(c: { ip: string; hostname: string | null }): string {
   return c.hostname || c.ip
 }
@@ -54,6 +67,8 @@ export function matchesFilter(c: ClientRow, filter: ClientFilter, newIps: Readon
       return isQuiet(c, now)
     case "attention":
       return c.rateLimited || newIps.has(c.ip)
+    case "single":
+      return singleNode(c) !== null
   }
 }
 
@@ -188,6 +203,40 @@ export function bucketEntries(entries: { timestamp: string; responseType: string
     if (isBlockedEntry(e)) blocked[i]!++
   }
   return { start, end, counts, blocked }
+}
+
+// Latest entries first, from several nodes' logs merged into one list.
+export function mergeEntries(lists: QueryLogEntry[][], limit = Number.POSITIVE_INFINITY): QueryLogEntry[] {
+  const all = lists.flat()
+  all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  return all.length > limit ? all.slice(0, limit) : all
+}
+
+export interface NodeBuckets {
+  start: number
+  end: number
+  // Queries per slice, for each node, on one shared time axis.
+  series: Record<string, number[]>
+}
+
+// Like bucketEntries, but one series per node over the same span, so the
+// lines can be drawn on a single axis.
+export function bucketByNode(entries: QueryLogEntry[], nodes: string[], n = 24): NodeBuckets | null {
+  const times = entries.map((e) => new Date(e.timestamp).getTime()).filter((t) => !Number.isNaN(t))
+  if (times.length < 2) return null
+  const start = Math.min(...times)
+  const end = Math.max(...times)
+  if (end <= start) return null
+  const series: Record<string, number[]> = {}
+  for (const name of nodes) series[name] = Array<number>(n).fill(0)
+  const width = (end - start) / n
+  for (const e of entries) {
+    const t = new Date(e.timestamp).getTime()
+    const bucket = e.node ? series[e.node] : undefined
+    if (Number.isNaN(t) || !bucket) continue
+    bucket[Math.min(n - 1, Math.floor((t - start) / width))]!++
+  }
+  return { start, end, series }
 }
 
 export interface ClientActivity {

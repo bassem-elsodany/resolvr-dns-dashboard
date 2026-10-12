@@ -1,24 +1,69 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import { fmtInt, pct } from "../../lib/charts"
+import { NODE_COLORS } from "../../stores/statsScope"
 import {
   displayName,
   formatAgo,
   isHeavyBlocking,
+  singleNode,
   type Buckets,
   type ClientRow,
+  type NodeBuckets,
   type SampleSummary,
 } from "../../lib/clients"
 import ClientActivityChart from "./ClientActivityChart.vue"
+import NodeCompareChart from "../overview/NodeCompareChart.vue"
 
-defineProps<{
+const props = defineProps<{
   client: ClientRow
   isNew: boolean
-  lease: { mac: string; scope: string } | null
+  lease: { mac: string; scope: string; node?: string } | null
   summary: SampleSummary | null
   buckets: Buckets | null
   sampleState: "loading" | "ready" | "error"
+  // The cluster's nodes, in order, when the page covers more than one.
+  nodes?: string[]
+  nodeBuckets?: NodeBuckets | null
 }>()
+
+const clustered = computed(() => (props.nodes?.length ?? 0) > 1)
+
+// How this client's queries were shared between the nodes.
+const answeredBy = computed(() => {
+  const by = props.client.byNode
+  if (!clustered.value || !by) return null
+  const names = props.nodes!
+  const total = names.reduce((n, name) => n + (by[name] ?? 0), 0)
+  if (total === 0) return null
+  return names.map((name, i) => ({
+    name,
+    short: name.split(".")[0]!,
+    count: by[name] ?? 0,
+    pct: Math.round(((by[name] ?? 0) / total) * 100),
+    color: NODE_COLORS[i % NODE_COLORS.length]!,
+  }))
+})
+const onlyNode = computed(() => singleNode(props.client))
+
+// "By node" draws one line per node for this client, instead of its total.
+const activityMode = ref<"all" | "node">("all")
+const nodeSeries = computed(() => {
+  const nb = props.nodeBuckets
+  if (!nb || !props.nodes) return null
+  const n = Object.values(nb.series)[0]?.length ?? 0
+  const slice = (nb.end - nb.start) / Math.max(1, n)
+  return {
+    labels: Array.from({ length: n }, (_, i) => new Date(nb.start + i * slice).toISOString()),
+    series: props.nodes.map((name, i) => ({
+      name,
+      color: NODE_COLORS[i % NODE_COLORS.length]!,
+      dashed: i % 2 === 1,
+      data: nb.series[name] ?? [],
+    })),
+  }
+})
+const nodeColor = (name: string | undefined): string => NODE_COLORS[Math.max(0, props.nodes?.indexOf(name ?? "") ?? 0) % NODE_COLORS.length]!
 
 const emit = defineEmits<{ (e: "open-logs", query: Record<string, string>): void }>()
 
@@ -61,7 +106,7 @@ async function copyIp(ip: string): Promise<void> {
         <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
           <span>IP <b class="font-mono font-medium text-fg">{{ client.ip }}</b></span>
           <span v-if="lease">MAC <b class="font-mono font-medium text-fg">{{ lease.mac }}</b></span>
-          <span v-if="lease">Lease <b class="font-medium text-fg">{{ lease.scope }}</b></span>
+          <span v-if="lease">Lease <b class="font-medium text-fg">{{ lease.scope }}</b><template v-if="clustered && lease.node"> · from {{ lease.node.split(".")[0] }}</template></span>
           <span>Last query <b class="font-medium text-fg">{{ formatAgo(client.lastSeen) }}</b></span>
         </div>
       </div>
@@ -94,12 +139,38 @@ async function copyIp(ip: string): Promise<void> {
       </div>
     </div>
 
+    <div v-if="answeredBy" id="client-answered-by" class="mb-3.5 rounded-lg border border-border px-3.5 py-3">
+      <div class="flex flex-wrap items-baseline justify-between gap-x-3 text-[12.5px]">
+        <span class="font-semibold">Answered by</span>
+        <span class="text-gray-500">{{
+          onlyNode ? `Only ${onlyNode.split(".")[0]} answers this device: it is not using the other node` : "Both nodes answer this device"
+        }}</span>
+      </div>
+      <div class="mt-2 flex h-3 overflow-hidden rounded-md bg-background-hover" role="img" :aria-label="answeredBy.map((a) => `${a.short} ${a.pct}%`).join(', ')">
+        <span v-for="a in answeredBy" :key="a.name" class="block h-full" :style="{ width: `${a.pct}%`, background: a.color }" />
+      </div>
+      <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+        <span v-for="a in answeredBy" :key="a.name" class="inline-flex items-center gap-1.5">
+          <span class="inline-block h-2.5 w-2.5 rounded-sm" :style="{ background: a.color }" />
+          <span class="font-mono">{{ a.short }}</span>
+          <span class="tabular-nums text-gray-500">{{ fmtInt(a.count) }} queries ({{ a.pct }}%)</span>
+        </span>
+      </div>
+    </div>
+
     <p v-if="sampleState === 'loading'" class="py-8 text-center text-sm text-gray-500">Loading this client's queries…</p>
     <p v-else-if="sampleState === 'error' || !summary" class="py-8 text-center text-sm text-gray-500">Could not load this client's queries.</p>
     <p v-else-if="summary.total === 0" class="py-8 text-center text-sm text-gray-500">No logged queries from this client in the selected range.</p>
     <template v-else>
-      <p class="mb-1.5 text-[12.5px] font-semibold">Activity in the latest {{ fmtInt(summary.total) }} queries</p>
-      <ClientActivityChart v-if="buckets" :buckets="buckets" :label="`Queries over time for ${displayName(client)}`" />
+      <div class="mb-1.5 flex items-center justify-between gap-2">
+        <p class="text-[12.5px] font-semibold">Activity in the latest {{ fmtInt(summary.total) }} queries</p>
+        <div v-if="clustered" role="group" aria-label="Activity view" class="inline-flex gap-0.5 rounded-lg border border-border bg-background-card p-0.5">
+          <button id="activity-all" type="button" :aria-pressed="activityMode === 'all'" class="rounded-md px-2.5 py-1 text-xs" :class="activityMode === 'all' ? 'bg-background-hover font-semibold text-fg' : 'text-gray-500'" @click="activityMode = 'all'">All</button>
+          <button id="activity-node" type="button" :aria-pressed="activityMode === 'node'" class="rounded-md px-2.5 py-1 text-xs" :class="activityMode === 'node' ? 'bg-background-hover font-semibold text-fg' : 'text-gray-500'" @click="activityMode = 'node'">By node</button>
+        </div>
+      </div>
+      <NodeCompareChart v-if="clustered && activityMode === 'node' && nodeSeries" :labels="nodeSeries.labels" :series="nodeSeries.series" />
+      <ClientActivityChart v-else-if="buckets" :buckets="buckets" :label="`Queries over time for ${displayName(client)}`" />
       <p v-else class="py-6 text-center text-sm text-gray-500">Too few queries to draw activity.</p>
 
       <div class="mt-3.5 grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3.5">
@@ -171,6 +242,7 @@ async function copyIp(ip: string): Promise<void> {
                   <th class="border-b border-border px-2 py-1 font-semibold">Type</th>
                   <th class="border-b border-border px-2 py-1 font-semibold">Result</th>
                   <th class="border-b border-border px-2 py-1 text-right font-semibold">Time</th>
+                  <th v-if="clustered" class="border-b border-border px-2 py-1 font-semibold">Node</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,6 +252,11 @@ async function copyIp(ip: string): Promise<void> {
                   <td class="border-b border-border/60 px-2 py-1">{{ e.qtype }}</td>
                   <td class="whitespace-nowrap border-b border-border/60 px-2 py-1"><span class="rounded border border-current px-1.5 text-[11px]" :class="resultClass(e.responseType)">{{ e.responseType }}</span></td>
                   <td class="whitespace-nowrap border-b border-border/60 px-2 py-1 text-right tabular-nums">{{ typeof e.responseRtt === "number" ? `${Math.round(e.responseRtt)} ms` : "–" }}</td>
+                  <td v-if="clustered" class="recent-node whitespace-nowrap border-b border-border/60 px-2 py-1">
+                    <span class="inline-flex items-center gap-1.5 font-mono text-xs">
+                      <span class="inline-block h-2 w-2 rounded-sm" :style="{ background: nodeColor(e.node) }" />{{ e.node ? e.node.split(".")[0] : "–" }}
+                    </span>
+                  </td>
                 </tr>
               </tbody>
             </table>

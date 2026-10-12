@@ -16,11 +16,14 @@ export function usePreviousStats() {
   const connection = useConnectionStore()
   const timeRange = useTimeRangeStore()
   const prevStats = ref<Stats | null>(null)
-  let cache: { duration: string; at: number; stats: Stats | null } | null = null
+  let cache: { duration: string; node: string | undefined; at: number; stats: Stats | null } | null = null
 
-  async function loadPrevious(): Promise<Stats | null> {
+  // `node` is Technitium's cluster scope (`cluster`), when the page shows
+  // cluster-wide stats; it is part of the cache key so switching scope never
+  // shows the other scope's numbers.
+  async function loadPrevious(node?: string): Promise<Stats | null> {
     const duration = timeRange.selected
-    if (cache && cache.duration === duration && Date.now() - cache.at < PREV_TTL_MS) {
+    if (cache && cache.duration === duration && cache.node === node && Date.now() - cache.at < PREV_TTL_MS) {
       prevStats.value = cache.stats
       return cache.stats
     }
@@ -28,13 +31,13 @@ export function usePreviousStats() {
     let result: Stats | null = null
     if (range) {
       try {
-        const res = await getDashboardStats("Custom", connection.credentials, { utc: true, ...range })
+        const res = await getDashboardStats("Custom", connection.credentials, { utc: true, node, ...range })
         result = res.response.stats
       } catch {
         // Left as null.
       }
     }
-    cache = { duration, at: Date.now(), stats: result }
+    cache = { duration, node, at: Date.now(), stats: result }
     prevStats.value = result
     return result
   }

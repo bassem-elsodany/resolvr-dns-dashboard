@@ -92,7 +92,39 @@ export function checkForUpdate(credentials: TechnitiumCredentials): Promise<Chec
   return technitiumGet(ENDPOINTS.checkForUpdate, {}, credentials)
 }
 
+// ---------- Cluster ----------
+
+export interface ClusterNode {
+  id: number
+  name: string
+  type: string
+  state: string
+  version?: string
+  lastSeen?: string
+}
+
+export interface ClusterStateResult {
+  response: {
+    clusterInitialized: boolean
+    clusterDomain?: string
+    dnsServerDomain?: string
+    clusterNodes: ClusterNode[]
+  }
+}
+
+// Which nodes a Technitium cluster has, their role and whether they are
+// reachable. Only meaningful when the connected server is clustered.
+export function getClusterState(credentials: TechnitiumCredentials): Promise<ClusterStateResult> {
+  return technitiumGet(ENDPOINTS.clusterState, {}, credentials)
+}
+
 // ---------- Dashboard ----------
+
+// Technitium can aggregate the dashboard stats across a cluster when a
+// request carries `node=cluster`. These two calls are the only ones where
+// that is true — every other call is per node — and the pages that mix
+// stats with per-node data (query logs, per-client counts) must not ask
+// for it, so `node` is an explicit option of the caller, never implicit.
 
 export type StatsDuration = "LastHour" | "LastDay" | "LastWeek" | "LastMonth" | "LastYear" | "Custom"
 
@@ -140,7 +172,7 @@ export interface DashboardStatsResult {
 export function getDashboardStats(
   type: StatsDuration,
   credentials: TechnitiumCredentials,
-  opts: { utc?: boolean; start?: string; end?: string } = {},
+  opts: { utc?: boolean; start?: string; end?: string; node?: string } = {},
 ): Promise<DashboardStatsResult> {
   return technitiumGet(ENDPOINTS.dashboardStats, { type, ...opts }, credentials)
 }
@@ -170,7 +202,7 @@ export function getTopStats(
   statsType: TopStatsType,
   type: StatsDuration,
   credentials: TechnitiumCredentials,
-  opts: { limit?: number; noReverseLookup?: boolean; onlyRateLimitedClients?: boolean } = {},
+  opts: { limit?: number; noReverseLookup?: boolean; onlyRateLimitedClients?: boolean; node?: string } = {},
 ): Promise<TopStatsResult> {
   return technitiumGet(ENDPOINTS.dashboardTopStats, { statsType, type, ...opts }, credentials)
 }
@@ -201,7 +233,7 @@ export interface ZonesListResult {
 
 export function listZones(
   credentials: TechnitiumCredentials,
-  opts: { pageNumber?: number; zonesPerPage?: number; filterName?: string; filterType?: string } = {},
+  opts: { pageNumber?: number; zonesPerPage?: number; filterName?: string; filterType?: string; node?: string } = {},
 ): Promise<ZonesListResult> {
   return technitiumGet(ENDPOINTS.zonesList, opts, credentials)
 }
@@ -221,11 +253,13 @@ export interface ZoneRecordsResult {
   response: { zone: { name: string; type: string }; records: ZoneRecord[] }
 }
 
+// Zones are kept per node on a cluster; `node` reads one node's copy.
 export function getZoneRecords(
   domain: string,
   credentials: TechnitiumCredentials,
+  opts: { node?: string } = {},
 ): Promise<ZoneRecordsResult> {
-  return technitiumGet(ENDPOINTS.zoneRecords, { domain, listZone: true }, credentials)
+  return technitiumGet(ENDPOINTS.zoneRecords, { domain, listZone: true, ...opts }, credentials)
 }
 
 // ---------- Cache ----------
@@ -234,8 +268,9 @@ export interface CacheListResult {
   response: { domain: string; zones: string[]; records: ZoneRecord[] }
 }
 
-export function listCache(domain: string, credentials: TechnitiumCredentials): Promise<CacheListResult> {
-  return technitiumGet(ENDPOINTS.cacheList, { domain }, credentials)
+// Each cluster node keeps its own cache; `node` reads one node's.
+export function listCache(domain: string, credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<CacheListResult> {
+  return technitiumGet(ENDPOINTS.cacheList, { domain, ...opts }, credentials)
 }
 
 // ---------- Allowed / Blocked zones ----------
@@ -244,26 +279,30 @@ export interface DomainListResult {
   response: { domain: string; zones: string[]; records: ZoneRecord[] }
 }
 
+// Allowed and blocked domains are synced between cluster nodes, but a node
+// can lag behind: `node` reads one node's copy to compare them.
 export function listAllowedZones(
   credentials: TechnitiumCredentials,
   domain = "",
+  opts: { node?: string } = {},
 ): Promise<DomainListResult> {
-  return technitiumGet(ENDPOINTS.allowedList, { domain }, credentials)
+  return technitiumGet(ENDPOINTS.allowedList, { domain, ...opts }, credentials)
 }
 
-export function exportAllowedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
-  return technitiumGetBlob(ENDPOINTS.allowedExport, {}, credentials)
+export function exportAllowedZones(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<DownloadedFile> {
+  return technitiumGetBlob(ENDPOINTS.allowedExport, { ...opts }, credentials)
 }
 
 export function listBlockedZones(
   credentials: TechnitiumCredentials,
   domain = "",
+  opts: { node?: string } = {},
 ): Promise<DomainListResult> {
-  return technitiumGet(ENDPOINTS.blockedList, { domain }, credentials)
+  return technitiumGet(ENDPOINTS.blockedList, { domain, ...opts }, credentials)
 }
 
-export function exportBlockedZones(credentials: TechnitiumCredentials): Promise<DownloadedFile> {
-  return technitiumGetBlob(ENDPOINTS.blockedExport, {}, credentials)
+export function exportBlockedZones(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<DownloadedFile> {
+  return technitiumGetBlob(ENDPOINTS.blockedExport, { ...opts }, credentials)
 }
 
 // ---------- DHCP ----------
@@ -280,8 +319,10 @@ export interface DhcpScopesResult {
   response: { scopes: DhcpScope[] }
 }
 
-export function listDhcpScopes(credentials: TechnitiumCredentials): Promise<DhcpScopesResult> {
-  return technitiumGet(ENDPOINTS.dhcpScopesList, {}, credentials)
+// `node` aims the call at one node of a Technitium cluster (DHCP leases and
+// scopes are kept per node). Left out, the connected node answers.
+export function listDhcpScopes(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<DhcpScopesResult> {
+  return technitiumGet(ENDPOINTS.dhcpScopesList, opts, credentials)
 }
 
 export interface DhcpLease {
@@ -297,8 +338,8 @@ export interface DhcpLeasesResult {
   response: { leases: DhcpLease[] }
 }
 
-export function listDhcpLeases(credentials: TechnitiumCredentials): Promise<DhcpLeasesResult> {
-  return technitiumGet(ENDPOINTS.dhcpLeasesList, {}, credentials)
+export function listDhcpLeases(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<DhcpLeasesResult> {
+  return technitiumGet(ENDPOINTS.dhcpLeasesList, opts, credentials)
 }
 
 // ---------- Query logs ----------
@@ -315,6 +356,9 @@ export interface QueryLogEntry {
   qtype: string
   qclass: string
   answer: string | null
+  // Which cluster node's log this entry came from. Set by Resolvr when it
+  // merges several nodes' logs; Technitium does not send it.
+  node?: string
 }
 
 export interface QueryLogsResult {
@@ -339,6 +383,8 @@ export interface QueryLogFilters {
   qname?: string
   qtype?: string
   qclass?: string
+  // Query logs are kept per node: aims the call at one node of a cluster.
+  node?: string
 }
 
 // Technitium ships several query-logging apps backed by different
@@ -390,8 +436,9 @@ export interface AppsListResult {
   response: { apps: DnsAppSummary[] }
 }
 
-export function listApps(credentials: TechnitiumCredentials): Promise<AppsListResult> {
-  return technitiumGet(ENDPOINTS.appsList, {}, credentials)
+// Apps are installed per cluster node; `node` reads one node's.
+export function listApps(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<AppsListResult> {
+  return technitiumGet(ENDPOINTS.appsList, { ...opts }, credentials)
 }
 
 // ---------- Settings ----------
@@ -425,8 +472,8 @@ export interface SettingsResult {
   response: DnsSettings
 }
 
-export function getSettings(credentials: TechnitiumCredentials): Promise<SettingsResult> {
-  return technitiumGet(ENDPOINTS.settingsGet, {}, credentials)
+export function getSettings(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<SettingsResult> {
+  return technitiumGet(ENDPOINTS.settingsGet, { ...opts }, credentials)
 }
 
 // ---------- DNS Client (resolver tool) ----------
@@ -457,11 +504,11 @@ export function resolveDnsQuery(
   domain: string,
   type: string,
   credentials: TechnitiumCredentials,
-  opts: { server?: string; protocol?: string; dnssec?: boolean } = {},
+  opts: { server?: string; protocol?: string; dnssec?: boolean; node?: string } = {},
 ): Promise<ResolveResult> {
   return technitiumGet(
     ENDPOINTS.dnsClientResolve,
-    { domain, type, server: opts.server ?? "recursive-resolver", protocol: opts.protocol, dnssec: opts.dnssec },
+    { domain, type, server: opts.server ?? "recursive-resolver", protocol: opts.protocol, dnssec: opts.dnssec, node: opts.node },
     credentials,
   )
 }
@@ -483,8 +530,9 @@ export interface AdminSessionsResult {
   response: { sessions: AdminSession[] }
 }
 
-export function listAdminSessions(credentials: TechnitiumCredentials): Promise<AdminSessionsResult> {
-  return technitiumGet(ENDPOINTS.adminSessionsList, {}, credentials)
+// Sessions are kept per cluster node; `node` reads one node's.
+export function listAdminSessions(credentials: TechnitiumCredentials, opts: { node?: string } = {}): Promise<AdminSessionsResult> {
+  return technitiumGet(ENDPOINTS.adminSessionsList, { ...opts }, credentials)
 }
 
 // ---------- helpers ----------

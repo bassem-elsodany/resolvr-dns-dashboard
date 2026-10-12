@@ -5,6 +5,7 @@ import { fmtInt, labelYs, pct, stackNodes, type Flows } from "../../lib/charts"
 import { useChartTip } from "../../composables/useChartTip"
 import ChartPanel from "../charts/ChartPanel.vue"
 import ChartTip from "../charts/ChartTip.vue"
+import ScopeChip from "./ScopeChip.vue"
 
 const props = defineProps<{ flows: Flows | null; state: "loading" | "ready" | "missing" | "error" }>()
 const router = useRouter()
@@ -108,6 +109,7 @@ function onOutClick(name: string): void {
     title="How a query is resolved"
     :hint="flows && flows.total ? `From the latest ${fmtInt(flows.total)} logged queries. Hover a flow, click a node to filter.` : 'From the latest logged queries.'"
   >
+    <template #actions><ScopeChip panel="flow" /></template>
     <p v-if="state === 'loading'" class="py-8 text-center text-sm text-gray-500">Loading…</p>
     <p v-else-if="state === 'missing'" class="py-8 text-center text-sm text-gray-500">
       Needs a query-logging app installed on the Technitium server.
@@ -115,7 +117,7 @@ function onOutClick(name: string): void {
     <p v-else-if="state === 'error'" class="py-8 text-center text-sm text-gray-500">Could not load the query log.</p>
     <p v-else-if="!layout" class="py-8 text-center text-sm text-gray-500">No logged queries yet.</p>
     <div v-else class="overflow-x-auto">
-      <svg :viewBox="`0 0 ${W} ${H}`" class="block h-auto min-w-[560px] w-full" role="img" aria-label="Flow from queries to resolution path to outcome">
+      <svg :viewBox="`0 0 ${W} ${H}`" class="mx-auto block h-auto w-full min-w-[560px] max-w-[900px]" role="img" aria-label="Flow from queries to resolution path to outcome">
         <path
           v-for="l in layout.links"
           :key="l.key"

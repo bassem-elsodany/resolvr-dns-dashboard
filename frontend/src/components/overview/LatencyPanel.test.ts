@@ -1,8 +1,14 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
+import { createPinia, setActivePinia } from "pinia"
 import LatencyPanel from "./LatencyPanel.vue"
 
 describe("LatencyPanel", () => {
+  // The panels read the cluster scope store (through the scope chip).
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it("shows percentile bins, the slow share, and one bar per bin", () => {
     const rtts = [...Array(90).fill(3), ...Array(5).fill(30), ...Array(5).fill(150)]
     const wrapper = mount(LatencyPanel, { props: { rtts, sampleSize: 200, state: "ready" } })

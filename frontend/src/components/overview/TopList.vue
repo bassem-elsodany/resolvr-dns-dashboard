@@ -18,7 +18,10 @@ const barColor = { accent: "rgb(var(--color-accent))", ok: "rgb(var(--color-ok))
 
 <template>
   <div class="rounded-lg border border-border bg-background-card p-3">
-    <div class="mb-2 text-[12.5px] font-semibold">{{ title }}</div>
+    <div class="mb-2 flex items-center justify-between gap-2">
+      <div class="text-[12.5px] font-semibold">{{ title }}</div>
+      <slot name="actions" />
+    </div>
     <div v-if="items.length === 0" class="py-6 text-center text-xs text-gray-500">No data yet.</div>
     <div v-else class="flex flex-col gap-2">
       <router-link

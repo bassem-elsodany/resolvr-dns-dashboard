@@ -19,6 +19,8 @@ export const useConnectionStore = defineStore("connection", () => {
   const serverDomain = ref<string | null>(null)
   const serverVersion = ref<string | null>(null)
   const isConfigured = ref(false)
+  // Part of a Technitium cluster — the dashboard can then show cluster-wide stats.
+  const clusterInitialized = ref(false)
 
   // No longer actually sent anywhere (see api/technitium.ts) — kept so
   // the ~30 view files that pass `connection.credentials` into API
@@ -33,6 +35,7 @@ export const useConnectionStore = defineStore("connection", () => {
       isConfigured.value = s.configured
       serverDomain.value = s.serverDomain
       serverVersion.value = s.serverVersion
+      clusterInitialized.value = s.clusterInitialized === true
       if (!s.configured) {
         status.value = "idle"
         error.value = null
@@ -63,6 +66,7 @@ export const useConnectionStore = defineStore("connection", () => {
       status.value = "connected"
       serverDomain.value = res.serverDomain
       serverVersion.value = res.serverVersion
+      clusterInitialized.value = res.clusterInitialized === true
     } catch (err) {
       status.value = "error"
       error.value = err instanceof AppApiError ? err.message : "Could not connect to the server."
@@ -77,6 +81,7 @@ export const useConnectionStore = defineStore("connection", () => {
     serverDomain.value = null
     serverVersion.value = null
     isConfigured.value = false
+    clusterInitialized.value = false
   }
 
   return {
@@ -87,6 +92,7 @@ export const useConnectionStore = defineStore("connection", () => {
     serverDomain,
     serverVersion,
     isConfigured,
+    clusterInitialized,
     credentials,
     setConfig,
     testConnection,

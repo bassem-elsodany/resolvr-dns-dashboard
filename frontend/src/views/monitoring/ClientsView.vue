@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue"
+import { ref, computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "../../stores/connection"
 import { useTimeRangeStore } from "../../stores/timeRange"
 import { useRefreshStore } from "../../stores/refresh"
 import { getDashboardStats, TechnitiumApiError, type DashboardStatsResult } from "../../api/technitium"
 import { useLivePolling } from "../../composables/useLivePolling"
 import { usePreviousStats } from "../../composables/usePreviousStats"
-import { useLogSample } from "../../composables/useLogSample"
+import { useMergedLogSample } from "../../composables/useLogSample"
+import { useStatsScopeStore } from "../../stores/statsScope"
+import ScopeChip from "../../components/overview/ScopeChip.vue"
 import ClientsExplorer from "../../components/clients/ClientsExplorer.vue"
 import LiveToggle from "../../components/ui/LiveToggle.vue"
 
@@ -16,11 +18,12 @@ const connection = useConnectionStore()
 const timeRange = useTimeRangeStore()
 const refresh = useRefreshStore()
 
+const statsScope = useStatsScopeStore()
 const stats = ref<DashboardStatsResult["response"] | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const { prevStats, loadPrevious } = usePreviousStats()
-const { entries: logEntries, state: logState, load: loadLogSample } = useLogSample()
+const { entries: logEntries, state: logState, load: loadLogSample } = useMergedLogSample()
 let forceNext = false
 
 // The page's own numbers (total queries and clients, for the share bar
@@ -31,11 +34,16 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const [res] = await Promise.all([getDashboardStats(timeRange.selected, connection.credentials, { utc: true }), loadPrevious()])
+    // One scope for the whole page: the list and the detail must agree.
+    const node = statsScope.nodeParam("clients")
+    const [res] = await Promise.all([
+      getDashboardStats(timeRange.selected, connection.credentials, { utc: true, node }),
+      loadPrevious(node),
+    ])
     stats.value = res.response
     const force = forceNext
     forceNext = false
-    void loadLogSample(force)
+    void loadLogSample(force, statsScope.targets("clients"))
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load client activity."
   } finally {
@@ -47,6 +55,11 @@ const { liveOn, toggle: toggleLive } = useLivePolling(() => load(), 5000, "clien
 
 onMounted(load)
 watch(() => timeRange.selected, load)
+// A different scope (or a node coming or going) changes what the page covers.
+const scopeKey = computed(() => JSON.stringify([statsScope.nodeParam("clients"), statsScope.targets("clients").map((t) => t.name)]))
+watch(scopeKey, () => {
+  if (connection.isConfigured) void load()
+})
 watch(
   () => refresh.tick,
   () => {
@@ -69,7 +82,10 @@ watch(
         <h1 class="text-lg font-semibold tracking-tight text-fg">Clients</h1>
         <p class="mt-1 text-sm text-gray-500">Who is using your DNS server, and what they are asking for</p>
       </div>
-      <LiveToggle v-if="connection.isConfigured" id="clients-live-toggle" :model-value="liveOn" @update:model-value="toggleLive" />
+      <div class="flex items-center gap-2.5">
+        <ScopeChip v-if="connection.isConfigured" panel="clients" heading="Show clients for" />
+        <LiveToggle v-if="connection.isConfigured" id="clients-live-toggle" :model-value="liveOn" @update:model-value="toggleLive" />
+      </div>
     </div>
 
     <p v-if="!connection.isConfigured" class="text-sm text-gray-500">

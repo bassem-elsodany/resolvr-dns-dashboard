@@ -4,6 +4,7 @@ import { useRoute } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import { useQueryLogsAppStore } from "../../stores/queryLogsApp"
+import { CLUSTER, NODE_COLORS, useStatsScopeStore } from "../../stores/statsScope"
 import {
   getTopStats,
   queryLogs,
@@ -15,19 +16,40 @@ import {
 import { durationToRange } from "../../lib/dateRange"
 import { blockedByLabel } from "../../lib/blockMechanism"
 import { triggerDownload } from "../../lib/download"
+import { mergeEntries } from "../../lib/clients"
+import { mergeCsv } from "../../lib/logExport"
 import { formatRtt } from "../../lib/formatRtt"
 import { responseTypeTone, rcodeTone, blockedByTone } from "../../lib/badgeTones"
 import { useLivePolling } from "../../composables/useLivePolling"
 import HostInsightPanel from "../../components/logs/HostInsightPanel.vue"
 import Badge from "../../components/ui/Badge.vue"
 import LiveToggle from "../../components/ui/LiveToggle.vue"
+import ScopeChip from "../../components/overview/ScopeChip.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
 const route = useRoute()
 const queryLogsApp = useQueryLogsAppStore()
+const statsScope = useStatsScopeStore()
 
 const ENTRIES_PER_PAGE = 20
+// Technitium pages each node's log on its own, so a merged page N needs the
+// newest N pages' worth of rows from every node. That is cheap for the first
+// pages and grows linearly, so merged paging stops here.
+const MERGED_MAX_ROWS = 1000
+
+// The page has one scope: the nodes whose logs are shown. On a cluster the
+// whole-cluster scope merges every reachable node's log by time.
+const targets = computed(() => statsScope.targets("logs"))
+const isCluster = computed(() => statsScope.available && statsScope.scopeOf("logs") === CLUSTER)
+const nodeNames = computed(() => targets.value.map((t) => t.name))
+const nodeTotals = ref<Record<string, number>>({})
+const failedNodes = ref<string[]>([])
+const unreachableNodes = computed(() => (isCluster.value ? statsScope.nodes.filter((n) => n.state === "Unreachable").map((n) => n.name) : []))
+const partialNodes = computed(() => [...new Set([...unreachableNodes.value, ...failedNodes.value])])
+const nodeColor = (name: string | undefined): string => NODE_COLORS[Math.max(0, statsScope.nodeNames.indexOf(name ?? "")) % NODE_COLORS.length]!
+const shortName = (name: string | undefined): string => (name ? name.split(".")[0]! : "–")
+const mergedCapped = computed(() => isCluster.value && totalEntries.value > MERGED_MAX_ROWS)
 
 const filters = reactive({
   clientIpAddress: "",
@@ -101,15 +123,44 @@ async function loadTable(): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    const res = await queryLogs(connection.credentials, queryLogsApp.app, {
-      ...activeFilters(),
-      pageNumber: pageNumber.value,
-      entriesPerPage: ENTRIES_PER_PAGE,
-      descendingOrder: true,
-    })
-    entries.value = res.response.entries
-    totalEntries.value = res.response.totalEntries
-    totalPages.value = res.response.totalPages
+    const app = queryLogsApp.app
+    const creds = connection.credentials
+    if (!isCluster.value) {
+      // One node (or a standalone server): exactly as before.
+      const res = await queryLogs(creds, app, {
+        ...activeFilters(),
+        pageNumber: pageNumber.value,
+        entriesPerPage: ENTRIES_PER_PAGE,
+        descendingOrder: true,
+        node: targets.value[0]?.node,
+      })
+      entries.value = res.response.entries
+      totalEntries.value = res.response.totalEntries
+      totalPages.value = res.response.totalPages
+      nodeTotals.value = {}
+      failedNodes.value = []
+    } else {
+      // Whole cluster: the newest rows from every node, merged by time.
+      const want = Math.min(pageNumber.value * ENTRIES_PER_PAGE, MERGED_MAX_ROWS)
+      const settled = await Promise.allSettled(
+        targets.value.map(async (t) => ({
+          t,
+          res: await queryLogs(creds, app, { ...activeFilters(), pageNumber: 1, entriesPerPage: want, descendingOrder: true, node: t.node }),
+        })),
+      )
+      const ok = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []))
+      if (ok.length === 0) {
+        const first = settled.find((s): s is PromiseRejectedResult => s.status === "rejected")
+        throw first?.reason ?? new Error("No node answered")
+      }
+      const merged = mergeEntries(ok.map(({ t, res }) => res.response.entries.map((e) => ({ ...e, node: t.name }))))
+      entries.value = merged.slice((pageNumber.value - 1) * ENTRIES_PER_PAGE, pageNumber.value * ENTRIES_PER_PAGE)
+      const total = ok.reduce((n, { res }) => n + res.response.totalEntries, 0)
+      totalEntries.value = total
+      totalPages.value = Math.max(1, Math.min(Math.ceil(total / ENTRIES_PER_PAGE), Math.floor(MERGED_MAX_ROWS / ENTRIES_PER_PAGE)))
+      nodeTotals.value = Object.fromEntries(ok.map(({ t, res }) => [t.name, res.response.totalEntries]))
+      failedNodes.value = settled.flatMap((s, i) => (s.status === "rejected" ? [targets.value[i]!.name] : []))
+    }
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not load query logs."
   } finally {
@@ -120,7 +171,7 @@ async function loadTable(): Promise<void> {
 async function loadHostChips(): Promise<void> {
   if (!connection.isConfigured) return
   try {
-    const res = await getTopStats("TopClients", "LastDay", connection.credentials, { limit: 6 })
+    const res = await getTopStats("TopClients", "LastDay", connection.credentials, { limit: 6, node: statsScope.nodeParam("logs") })
     hostChips.value = res.response.topClients ?? []
   } catch {
     hostChips.value = []
@@ -143,20 +194,32 @@ async function loadHostInsight(entry: TopClientEntry): Promise<void> {
   if (!queryLogsApp.app) return
   const app = queryLogsApp.app
   const { start, end } = durationToRange("LastDay")
-  const base = { clientIpAddress: entry.name, start, end, entriesPerPage: 1 }
-  const [totalRes, blockedRes, cacheRes, upstreamRes] = await Promise.allSettled([
-    queryLogs(connection.credentials, app, base),
-    queryLogs(connection.credentials, app, { ...base, responseType: "Blocked" }),
-    queryLogs(connection.credentials, app, { ...base, responseType: "CacheBlocked" }),
-    queryLogs(connection.credentials, app, { ...base, responseType: "UpstreamBlocked" }),
-  ])
-  const cacheBlocked = countFrom(cacheRes)
-  const upstreamBlocked = countFrom(upstreamRes)
+  // Counted on every node in scope and added up.
+  const perNode = await Promise.all(
+    targets.value.map(async (t) => {
+      const base = { clientIpAddress: entry.name, start, end, entriesPerPage: 1, node: t.node }
+      const [totalRes, blockedRes, cacheRes, upstreamRes] = await Promise.allSettled([
+        queryLogs(connection.credentials, app, base),
+        queryLogs(connection.credentials, app, { ...base, responseType: "Blocked" }),
+        queryLogs(connection.credentials, app, { ...base, responseType: "CacheBlocked" }),
+        queryLogs(connection.credentials, app, { ...base, responseType: "UpstreamBlocked" }),
+      ])
+      return {
+        total: countFrom(totalRes),
+        blocked: countFrom(blockedRes),
+        cacheBlocked: countFrom(cacheRes),
+        upstreamBlocked: countFrom(upstreamRes),
+      }
+    }),
+  )
+  const sum = (k: keyof (typeof perNode)[number]): number => perNode.reduce((n, p) => n + p[k], 0)
+  const cacheBlocked = sum("cacheBlocked")
+  const upstreamBlocked = sum("upstreamBlocked")
   hostInsight.value = {
     ip: entry.name,
     hostname: entry.domain ?? null,
-    total: countFrom(totalRes),
-    blocked: countFrom(blockedRes) + cacheBlocked + upstreamBlocked,
+    total: sum("total"),
+    blocked: sum("blocked") + cacheBlocked + upstreamBlocked,
     cacheBlocked,
     upstreamBlocked,
   }
@@ -261,8 +324,20 @@ function goToPage(delta: number): void {
 async function onExport(): Promise<void> {
   if (!queryLogsApp.app) return
   try {
-    const file = await exportLogs(connection.credentials, queryLogsApp.app, activeFilters())
-    triggerDownload(file)
+    const app = queryLogsApp.app
+    if (!isCluster.value) {
+      triggerDownload(await exportLogs(connection.credentials, app, { ...activeFilters(), node: targets.value[0]?.node }))
+      return
+    }
+    // Whole cluster: every node's export in one file, with a Node column.
+    const texts = await Promise.all(
+      targets.value.map(async (t) => {
+        const file = await exportLogs(connection.credentials, app, { ...activeFilters(), node: t.node })
+        return { node: t.name, text: await file.blob.text() }
+      }),
+    )
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
+    triggerDownload({ blob: new Blob([mergeCsv(texts)], { type: "text/csv" }), filename: `cluster_${stamp}_query_logs.csv` })
   } catch (err) {
     loadError.value = err instanceof TechnitiumApiError ? err.message : "Could not export query logs."
   }
@@ -287,6 +362,15 @@ watch(
 // Overview while already on this page — this watcher covers that.
 watch(() => route.query, applyRouteQuery)
 watch(() => refresh.tick, loadTable)
+// A different scope (or a node coming or going) changes whose log this is.
+const scopeKey = computed(() => JSON.stringify([statsScope.nodeParam("logs"), nodeNames.value]))
+watch(scopeKey, () => {
+  if (!connection.isConfigured) return
+  pageNumber.value = 1
+  hostInsight.value = null
+  void loadTable()
+  void loadHostChips()
+})
 </script>
 
 <template>
@@ -296,11 +380,20 @@ watch(() => refresh.tick, loadTable)
         <h1 class="text-lg font-semibold tracking-tight text-fg">Query Logs</h1>
         <p class="mt-1 text-sm text-gray-500">
           Every request answered by the resolver<span v-if="queryLogsApp.name">
-            &middot; sourced from the {{ queryLogsApp.name }} app</span
+            &middot; sourced from the {{ queryLogsApp.name }} app<span v-if="isCluster"> on {{ nodeNames.length }} nodes</span></span
           ><span v-if="totalEntries > 0"> &middot; {{ totalEntries.toLocaleString() }} entries</span>
+        </p>
+        <p v-if="isCluster && Object.keys(nodeTotals).length" id="node-totals" class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+          <span v-for="(n, name) in nodeTotals" :key="name" class="inline-flex items-center gap-1.5">
+            <span class="inline-block h-2.5 w-2.5 rounded-sm" :style="{ background: nodeColor(String(name)) }" />
+            <span class="font-mono">{{ shortName(String(name)) }}</span>
+            <span class="tabular-nums">{{ n.toLocaleString() }}</span>
+          </span>
+          <span>Merged by time, newest first.</span>
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <ScopeChip v-if="connection.isConfigured" panel="logs" heading="Show logs from" />
         <LiveToggle id="live-toggle" :model-value="liveOn" @update:model-value="toggleLive" />
         <button
           id="export-csv"
@@ -472,6 +565,16 @@ watch(() => refresh.tick, loadTable)
         :upstream-blocked="hostInsight.upstreamBlocked"
       />
 
+      <div
+        v-if="partialNodes.length"
+        id="logs-partial"
+        class="mb-3 rounded-lg border border-warn/35 bg-warn/10 px-3.5 py-2.5 text-[12.5px] font-medium"
+      >
+        <span class="font-mono">{{ partialNodes.join(", ") }}</span>
+        {{ partialNodes.length === 1 ? "is" : "are" }} unreachable. The table shows the other
+        {{ partialNodes.length === 1 ? "node" : "nodes" }} only, so it is partial.
+      </div>
+
       <p v-if="loadError" id="logs-error" class="mb-3 text-sm text-crit">{{ loadError }}</p>
 
       <div class="overflow-x-auto rounded-lg border border-border">
@@ -480,6 +583,7 @@ watch(() => refresh.tick, loadTable)
             <tr class="border-b border-border bg-background-elevated text-[10.5px] uppercase text-gray-500">
               <th class="px-2.5 py-2 font-bold">Time</th>
               <th class="px-2.5 py-2 font-bold">Client</th>
+              <th v-if="isCluster" class="px-2.5 py-2 font-bold">Node</th>
               <th class="px-2.5 py-2 font-bold">Protocol</th>
               <th class="px-2.5 py-2 font-bold">Response</th>
               <th class="px-2.5 py-2 font-bold">Blocked by</th>
@@ -492,11 +596,11 @@ watch(() => refresh.tick, loadTable)
           </thead>
           <tbody>
             <tr v-if="entries.length === 0">
-              <td colspan="10" class="px-3 py-6 text-center text-gray-500">
+              <td :colspan="isCluster ? 11 : 10" class="px-3 py-6 text-center text-gray-500">
                 {{ loading ? "Loading…" : "No entries match these filters." }}
               </td>
             </tr>
-            <tr v-for="row in entries" :key="row.rowNumber" class="border-b border-border last:border-b-0">
+            <tr v-for="row in entries" :key="`${row.node ?? ''}-${row.rowNumber}`" class="border-b border-border last:border-b-0">
               <td class="whitespace-nowrap px-2.5 py-1.5 text-gray-500">{{ new Date(row.timestamp).toLocaleTimeString() }}</td>
               <td class="px-2.5 py-1.5 font-mono">
                 <button
@@ -507,6 +611,11 @@ watch(() => refresh.tick, loadTable)
                 >
                   {{ row.clientIpAddress }}
                 </button>
+              </td>
+              <td v-if="isCluster" class="log-node whitespace-nowrap px-2.5 py-1.5">
+                <span class="inline-flex items-center gap-1.5 font-mono">
+                  <span class="inline-block h-2 w-2 rounded-sm" :style="{ background: nodeColor(row.node) }" />{{ shortName(row.node) }}
+                </span>
               </td>
               <td class="px-2.5 py-1.5">{{ row.protocol }}</td>
               <td class="px-2.5 py-1.5">
@@ -541,6 +650,9 @@ watch(() => refresh.tick, loadTable)
 
       <div class="mt-2 flex items-center justify-between rounded-b-lg border border-t-0 border-border bg-background-elevated px-3 py-1.5 text-[11.5px] text-gray-500">
         <span>Showing {{ rangeStart.toLocaleString() }}&ndash;{{ rangeEnd.toLocaleString() }} of {{ totalEntries.toLocaleString() }}</span>
+        <span v-if="isCluster" id="merged-note" class="hidden md:inline">
+          Merged from {{ nodeNames.length }} nodes<template v-if="mergedCapped">. Paging stops at {{ MERGED_MAX_ROWS.toLocaleString() }} rows: narrow the filters or export to go further.</template>
+        </span>
         <div class="flex gap-1">
           <button
             id="prev-page"

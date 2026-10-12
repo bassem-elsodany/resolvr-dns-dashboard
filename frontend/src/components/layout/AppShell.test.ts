@@ -111,11 +111,49 @@ describe("AppShell", () => {
     expect(wrapper.get("#app-sidebar").findAll("a").map((a) => a.text())).toContain("Users")
   })
 
-  it("keeps page content left-aligned next to the sidebar instead of centering it", async () => {
+  it("lets the Overview fill the width next to the sidebar", async () => {
     signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
+    await router.push("/")
+    await flushPromises()
+
+    const content = wrapper.get("header + div")
+    expect(content.classes()).not.toContain("max-w-6xl")
+    expect(content.classes()).toContain("w-full")
+  })
+
+  it("lets the Users page fill the width too", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+    await router.push("/users")
+    await flushPromises()
+
+    expect(wrapper.get("header + div").classes()).not.toContain("max-w-6xl")
+  })
+
+  it("lets the Clients page fill the width too", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+    await router.push("/clients")
+    await flushPromises()
+
+    expect(wrapper.get("header + div").classes()).not.toContain("max-w-6xl")
+  })
+
+  it("keeps the other pages left-aligned at a readable width, not centered", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+    // Users and Connection Settings are forms, not data tables, so they keep a readable width.
+    await router.push("/connect")
+    await flushPromises()
 
     const content = wrapper.get("header + div")
     expect(content.classes()).toContain("max-w-6xl")

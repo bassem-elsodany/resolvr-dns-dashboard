@@ -31,6 +31,7 @@ export const ENDPOINTS = {
   settingsGet: "/settings/get",
   dnsClientResolve: "/dnsClient/resolve",
   adminSessionsList: "/admin/sessions/list",
+  clusterState: "/admin/cluster/state",
 } as const
 
 export type EndpointKey = keyof typeof ENDPOINTS

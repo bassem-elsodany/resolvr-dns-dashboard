@@ -3,12 +3,16 @@ import { computed, ref } from "vue"
 import { fmtInt, niceMax } from "../../lib/charts"
 import type { Buckets } from "../../lib/clients"
 import { useChartTip } from "../../composables/useChartTip"
+import { useElementWidth } from "../../composables/useElementWidth"
 import ChartTip from "../charts/ChartTip.vue"
 
 const props = defineProps<{ buckets: Buckets; label: string }>()
 const { tip, show, hide } = useChartTip()
 
-const W = 640
+// Fixed height, fluid width, so a wide window lengthens the time axis
+// rather than making the chart taller.
+const box = ref<HTMLElement | null>(null)
+const W = useElementWidth(box, 640, 360, 2400)
 const H = 190
 const ML = 40
 const MR = 10
@@ -17,7 +21,7 @@ const MB = 24
 
 const n = computed(() => props.buckets.counts.length)
 const top = computed(() => niceMax(Math.max(1, ...props.buckets.counts) * 1.05))
-const x = (i: number) => ML + (i / Math.max(1, n.value - 1)) * (W - ML - MR)
+const x = (i: number) => ML + (i / Math.max(1, n.value - 1)) * (W.value - ML - MR)
 const y = (v: number) => MT + (1 - v / top.value) * (H - MT - MB)
 const line = (a: number[]) => a.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("")
 const slice = computed(() => (props.buckets.end - props.buckets.start) / n.value)
@@ -44,8 +48,8 @@ const svgEl = ref<SVGSVGElement | null>(null)
 function onMove(e: PointerEvent): void {
   const rect = svgEl.value!.getBoundingClientRect()
   if (rect.width === 0) return
-  const vx = ((e.clientX - rect.left) / rect.width) * W
-  const i = Math.max(0, Math.min(n.value - 1, Math.round(((vx - ML) / (W - ML - MR)) * (n.value - 1))))
+  const vx = ((e.clientX - rect.left) / rect.width) * W.value
+  const i = Math.max(0, Math.min(n.value - 1, Math.round(((vx - ML) / (W.value - ML - MR)) * (n.value - 1))))
   hover.value = i
   const from = props.buckets.start + i * slice.value
   show(e, `${stamp(from)} to ${stamp(from + slice.value)}`, [
@@ -61,7 +65,7 @@ function onLeave(): void {
 </script>
 
 <template>
-  <div id="client-activity">
+  <div id="client-activity" ref="box">
     <svg
       ref="svgEl"
       :viewBox="`0 0 ${W} ${H}`"

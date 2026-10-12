@@ -4,10 +4,14 @@ import { listZones, type ZoneSummary } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import { cached, groupZoneTypes, ZONE_TYPE_COLORS } from "../../lib/charts"
+import { useStatsScopeStore } from "../../stores/statsScope"
 import ChartPanel from "../charts/ChartPanel.vue"
+import ScopeChip from "./ScopeChip.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const statsScope = useStatsScopeStore()
+const node = computed(() => statsScope.nodeParam("zones"))
 
 const zones = ref<ZoneSummary[]>([])
 const state = ref<"loading" | "ready" | "error">("loading")
@@ -15,7 +19,12 @@ const state = ref<"loading" | "ready" | "error">("loading")
 async function load(force = false): Promise<void> {
   if (!connection.isConfigured) return
   try {
-    const res = await cached("zones-list", 60_000, () => listZones(connection.credentials, { zonesPerPage: 1000 }), force)
+    const res = await cached(
+      `zones-list-${node.value ?? "self"}`,
+      60_000,
+      () => listZones(connection.credentials, { zonesPerPage: 1000, node: node.value }),
+      force,
+    )
     zones.value = res.response.zones
     state.value = "ready"
   } catch {
@@ -26,6 +35,7 @@ async function load(force = false): Promise<void> {
 onMounted(() => void load())
 watch(() => refresh.tick, () => void load(true))
 watch(() => connection.isConfigured, (c) => c && void load())
+watch(node, () => void load())
 
 const own = computed(() => zones.value.filter((z) => !z.internal))
 const groups = computed(() => groupZoneTypes(zones.value))
@@ -35,6 +45,7 @@ const color = (t: string) => ZONE_TYPE_COLORS[t] ?? "rgb(var(--color-chart-gray)
 
 <template>
   <ChartPanel title="Zones by type" :hint="state === 'ready' ? `${own.length} zones, ${signed} DNSSEC signed.` : ''">
+    <template #actions><ScopeChip panel="zones" /></template>
     <p v-if="state === 'loading'" class="py-6 text-center text-sm text-gray-500">Loading…</p>
     <p v-else-if="state === 'error'" class="py-6 text-center text-sm text-gray-500">Could not load zones.</p>
     <p v-else-if="groups.length === 0" class="py-6 text-center text-sm text-gray-500">No zones yet.</p>

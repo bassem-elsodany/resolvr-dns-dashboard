@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import { mount } from "@vue/test-utils"
+import { createPinia, setActivePinia } from "pinia"
 import { createRouter, createMemoryHistory } from "vue-router"
 import FlowPanel from "./FlowPanel.vue"
 import { buildFlows } from "../../lib/charts"
@@ -23,6 +24,11 @@ async function mountPanel(f = flows, state: "ready" | "loading" | "missing" | "e
 }
 
 describe("FlowPanel", () => {
+  // The panels read the cluster scope store (through the scope chip).
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it("draws a node per path and outcome, and a link per hop", async () => {
     const { wrapper } = await mountPanel()
     // 1 query node + 3 paths + 3 outcomes

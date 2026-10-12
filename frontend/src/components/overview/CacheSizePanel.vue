@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { fmtInt } from "../../lib/charts"
+import { useStatsScopeStore } from "../../stores/statsScope"
 import ChartPanel from "../charts/ChartPanel.vue"
+import ScopeChip from "./ScopeChip.vue"
 
 const props = defineProps<{ entries: number }>()
 
@@ -9,6 +11,10 @@ const props = defineProps<{ entries: number }>()
 // from readings this browser takes while the dashboard is open. They are
 // kept for 24 hours, at most one a minute.
 const KEY = "resolvr.cacheSamples"
+// Each node has its own cache, so each keeps its own trend.
+const statsScope = useStatsScopeStore()
+const node = computed(() => statsScope.nodeParam("cache"))
+const storageKey = computed(() => (node.value ? `${KEY}.${node.value}` : KEY))
 const DAY_MS = 86400_000
 const MIN_GAP_MS = 60_000
 
@@ -17,16 +23,21 @@ interface Sample {
   v: number
 }
 
-function readSamples(): Sample[] {
+function readSamples(key: string): Sample[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]") as Sample[]
+    const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as Sample[]
     return Array.isArray(raw) ? raw.filter((s) => typeof s.t === "number" && typeof s.v === "number") : []
   } catch {
     return []
   }
 }
 
-const samples = ref<Sample[]>(readSamples())
+const samples = ref<Sample[]>(readSamples(storageKey.value))
+
+// Another node is a different cache: start from its own readings.
+watch(storageKey, (key) => {
+  samples.value = readSamples(key)
+})
 
 watch(
   () => props.entries,
@@ -37,7 +48,7 @@ watch(
     if (!last || now - last.t >= MIN_GAP_MS) kept.push({ t: now, v })
     samples.value = kept
     try {
-      localStorage.setItem(KEY, JSON.stringify(kept))
+      localStorage.setItem(storageKey.value, JSON.stringify(kept))
     } catch {
       // Storage blocked: the trend just restarts on the next visit.
     }
@@ -65,6 +76,7 @@ const path = computed(() => {
 
 <template>
   <ChartPanel title="Cache size" hint="Entries in the resolver cache, sampled while this page is open.">
+    <template #actions><ScopeChip panel="cache" /></template>
     <div class="text-[26px] font-bold leading-tight tracking-tight tabular-nums" id="cache-entries">{{ fmtInt(entries) }}</div>
     <div class="text-xs text-gray-500">entries now</div>
     <svg v-if="path" :viewBox="`0 0 ${W} ${H}`" class="mt-1 block h-[60px] w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="Cache size trend">
