@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { openDb } from "./db.js";
-import { loadAddonMode, applyAddonOptions, parsePeers, normalizePeer, cleanTechnitiumUrl } from "./addon.js";
+import { loadAddonMode, applyAddonOptions, parsePeers, normalizePeer, cleanTechnitiumUrl, addonLogEnv } from "./addon.js";
 
 let dir: string;
 beforeEach(() => {
@@ -97,5 +97,23 @@ describe("applyAddonOptions", () => {
     expect(cleanTechnitiumUrl("http://a.example.lan:5380///")).toBe("http://a.example.lan:5380");
     expect(cleanTechnitiumUrl("ftp://a.example.lan")).toBeNull();
     expect(cleanTechnitiumUrl("nope")).toBeNull();
+  });
+});
+
+describe("addonLogEnv", () => {
+  it("maps the add-on's logging options onto the LOG_* settings", () => {
+    expect(addonLogEnv({ log_level: "warn", log_format: "json", log_requests: false }, {})).toEqual({
+      LOG_LEVEL: "warn",
+      LOG_FORMAT: "json",
+      LOG_REQUESTS: "false",
+    });
+  });
+
+  it("lets an environment variable win over the option", () => {
+    expect(addonLogEnv({ log_level: "warn" }, { LOG_LEVEL: "debug" }).LOG_LEVEL).toBe("debug");
+  });
+
+  it("leaves unset options undefined so the defaults apply", () => {
+    expect(addonLogEnv({}, {})).toEqual({ LOG_LEVEL: undefined, LOG_FORMAT: undefined, LOG_REQUESTS: undefined });
   });
 });

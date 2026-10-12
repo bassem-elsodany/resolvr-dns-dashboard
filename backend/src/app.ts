@@ -10,6 +10,7 @@ import { configRoutes, statusRoute } from "./routes/configRoutes.js";
 import { actionRoutes } from "./routes/actionRoutes.js";
 import { serveFrontend } from "./frontend.js";
 import type { AddonMode } from "./addon.js";
+import { logger as defaultLogger, clean, type Logger } from "./logger.js";
 
 export interface CreateAppOptions {
   frontendOrigin?: string;
@@ -19,12 +20,15 @@ export interface CreateAppOptions {
   addon?: AddonMode | null;
   // Directory of the built web app to serve from this same process.
   staticDir?: string;
+  // Where request lines go; defaults to the process-wide logger (LOG_LEVEL).
+  logger?: Logger;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const frontendOrigin = options.frontendOrigin ?? process.env.FRONTEND_ORIGIN;
   const fetchImpl = options.fetchImpl ?? fetch;
   const db = options.db ?? openDb();
+  const log = options.logger ?? defaultLogger;
 
   const app = express();
   // With no FRONTEND_ORIGIN configured, reflect whatever Origin the
@@ -46,11 +50,18 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Docker deployments have nothing else scraping request activity, so
   // without this `docker logs` shows nothing at all for the backend
-  // container regardless of what's actually happening.
+  // container regardless of what's actually happening. The container
+  // healthcheck hits /healthz every few seconds, so a healthy answer there is
+  // only logged at LOG_LEVEL=debug; a failing one is always a request line.
   app.use((req: Request, res: Response, next) => {
     const start = Date.now();
     res.on("finish", () => {
-      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
+      if (!log.requests) return;
+      const ms = Date.now() - start;
+      const line = `${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`;
+      const fields = { method: req.method, url: req.originalUrl, status: res.statusCode, ms };
+      if (req.path === "/healthz" && res.statusCode < 400) log.debug(line, fields);
+      else log.info(line, fields);
     });
     next();
   });
@@ -90,6 +101,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     const splat = req.params.splat;
     const path = "/" + (Array.isArray(splat) ? splat.join("/") : (splat ?? ""));
     if (!isAllowedPath(path)) {
+      log.warn(`Technitium proxy refused a path that is not on the allowlist: ${clean(path, 120)}`);
       res.status(403).json({ error: `Path not allowed: ${path}` });
       return;
     }
@@ -106,15 +118,19 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }
 
     try {
+      const began = Date.now();
       const upstreamRes = await fetchImpl(target, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      log.debug(`Technitium ${clean(path, 120)} answered ${upstreamRes.status} in ${Date.now() - began}ms`);
+      if (upstreamRes.status >= 500) log.warn(`Technitium answered ${upstreamRes.status} for ${clean(path, 120)}`);
       const body = await upstreamRes.text();
       const contentType = upstreamRes.headers.get("content-type") ?? "application/json";
       const contentDisposition = upstreamRes.headers.get("content-disposition");
       if (contentDisposition) res.setHeader("content-disposition", contentDisposition);
       res.status(upstreamRes.status).type(contentType).send(body);
     } catch (err) {
+      log.error(`Could not reach the Technitium server for ${clean(path, 120)}: ${(err as Error).message}`);
       res.status(502).json({ error: `Could not reach Technitium server: ${(err as Error).message}` });
     }
   });

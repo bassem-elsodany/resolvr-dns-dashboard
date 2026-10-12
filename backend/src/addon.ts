@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { Database } from "better-sqlite3";
+import { logger } from "./logger.js";
 
 // Home Assistant add-on support. When Resolvr runs as an add-on the
 // Supervisor mounts the user's settings at /data/options.json and puts
@@ -14,6 +15,11 @@ import type { Database } from "better-sqlite3";
 export interface AddonOptions {
   technitium_url?: string;
   technitium_token?: string;
+  // Logging, same meaning as LOG_LEVEL / LOG_FORMAT / LOG_REQUESTS. The
+  // environment variable wins when both are set.
+  log_level?: string;
+  log_format?: string;
+  log_requests?: boolean | string;
 }
 
 export interface AddonMode {
@@ -46,7 +52,7 @@ function readOptionsFile(file: string): AddonOptions | null {
     // A missing file just means this is not an add-on. A file that exists
     // but cannot be read is a real problem worth saying out loud.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    console.error(`Could not read add-on options from ${file}: ${(err as Error).message}`);
+    logger.error(`Could not read add-on options from ${file}: ${(err as Error).message}`);
     return {};
   }
 }
@@ -61,6 +67,19 @@ export function loadAddonMode(env: NodeJS.ProcessEnv = process.env): AddonMode |
   const url = (opts.technitium_url ?? "").trim();
   const token = (opts.technitium_token ?? "").trim();
   return { options: opts, trustedPeers: parsePeers(env.TRUSTED_INGRESS_IPS), managed: Boolean(url && token) };
+}
+
+// The logging settings an add-on's options imply, in the shape parseConfig
+// reads. Environment variables, when set, take precedence over these.
+export function addonLogEnv(options: AddonOptions, env: NodeJS.ProcessEnv = process.env): Record<string, string | undefined> {
+  const fromOptions: Record<string, string | undefined> = {
+    LOG_LEVEL: options.log_level,
+    LOG_FORMAT: options.log_format,
+    LOG_REQUESTS: options.log_requests === undefined ? undefined : String(options.log_requests),
+  };
+  const out: Record<string, string | undefined> = {};
+  for (const key of Object.keys(fromOptions)) out[key] = env[key]?.trim() ? env[key] : fromOptions[key];
+  return out;
 }
 
 export function cleanTechnitiumUrl(url: string): string | null {

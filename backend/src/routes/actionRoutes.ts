@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Database } from "better-sqlite3";
 import { callTechnitiumAction } from "../technitiumAction.js";
+import { logger, clean } from "../logger.js";
 import type { AppConfigRow } from "../db.js";
 
 // A cluster node's domain name: letters, digits, dots and hyphens only, so a
@@ -33,6 +34,19 @@ function requireConfig(db: Database): AppConfigRow | null {
 export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): Router {
   const fetchImpl = options.fetchImpl ?? fetch;
   const router = Router();
+
+  // One audit line per admin action: who ran it, what, on which node, and how
+  // it ended. Request bodies (domains, URLs, tokens) are never logged.
+  router.use((req, res, next) => {
+    res.on("finish", () => {
+      const who = clean((req as { user?: { username?: string } }).user?.username ?? "unknown");
+      const node = typeof req.body?.node === "string" && req.body.node ? ` on node ${clean(req.body.node)}` : "";
+      const line = `Admin action ${req.path}${node} by ${who}: ${res.statusCode}`;
+      if (res.statusCode >= 400) logger.warn(line);
+      else logger.info(line);
+    });
+    next();
+  });
 
   // On a Technitium cluster each node keeps its own cache. `node` aims the
   // flush at one of them; left out, the connected node is flushed.

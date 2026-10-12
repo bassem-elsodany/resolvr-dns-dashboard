@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Database } from "better-sqlite3";
 import { pingTechnitium } from "../technitiumPing.js";
 import type { AppConfigRow } from "../db.js";
+import { logger, clean } from "../logger.js";
 
 export interface ConfigRoutesOptions {
   fetchImpl?: typeof fetch;
@@ -64,12 +65,13 @@ export function configRoutes(db: Database, options: ConfigRoutesOptions = {}): R
     if (!result.ok) {
       // The browser only gets the message; put the reason in the server log
       // too (never the token), so `docker logs` explains the 400.
-      console.warn(`Technitium connection check failed for ${cleanBaseUrl}: ${result.error ?? "unknown error"}`);
+      logger.warn(`Technitium connection check failed for ${cleanBaseUrl}: ${result.error ?? "unknown error"}`);
       res.status(400).json({ error: result.error ?? "Could not connect to the server" });
       return;
     }
 
     db.prepare("UPDATE app_config SET base_url = ?, token = ? WHERE id = 1").run(cleanBaseUrl, cleanToken);
+    logger.info(`Technitium connection saved: ${clean(cleanBaseUrl, 200)} (${clean(result.serverDomain)}, cluster: ${result.clusterInitialized ? "yes" : "no"})`);
     res.json({
       status: "ok",
       serverDomain: result.serverDomain,
