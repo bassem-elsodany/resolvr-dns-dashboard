@@ -61,6 +61,9 @@ export function configRoutes(db: Database, options: ConfigRoutesOptions = {}): R
 
     const result = await pingTechnitium(cleanBaseUrl, cleanToken, fetchImpl);
     if (!result.ok) {
+      // The browser only gets the message; put the reason in the server log
+      // too (never the token), so `docker logs` explains the 400.
+      console.warn(`Technitium connection check failed for ${cleanBaseUrl}: ${result.error ?? "unknown error"}`);
       res.status(400).json({ error: result.error ?? "Could not connect to the server" });
       return;
     }
