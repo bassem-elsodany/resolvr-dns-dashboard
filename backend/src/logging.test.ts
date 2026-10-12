@@ -72,3 +72,42 @@ describe("what is not logged", () => {
     if (token) expect(everything).not.toContain(token);
   });
 });
+
+describe("why a request was rejected", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("names the missing cookie in a warning, without printing any token", async () => {
+    const { app } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await request(app).put("/api/config").send({ baseUrl: "http://x", token: "t" });
+    const out = warn.mock.calls.map(String).join("\n");
+    expect(out).toContain("Rejected PUT /api/config (401): no session cookie came with the request");
+  });
+
+  it("says when a cookie came but its session is unknown, and never prints the token value", async () => {
+    const { app } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await request(app).put("/api/config").set("Cookie", "resolvr_session=deadbeefdeadbeef").send({});
+    const out = warn.mock.calls.map(String).join("\n");
+    expect(out).toContain("its session is unknown or has expired");
+    expect(out).not.toContain("deadbeefdeadbeef");
+  });
+
+  it("keeps the expected sign-in-page check quiet", async () => {
+    const { app } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await request(app).get("/api/auth/me");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("names a viewer who tried an admin action", async () => {
+    const sink = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const db = openDb({ path: ":memory:", seedAdmin: ADMIN, seedViewer: { username: "reader", password: "reader-password-1" } });
+    const app = createApp({ db, logger: createLogger({ level: "info" }, sink) });
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send({ username: "reader", password: "reader-password-1" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await agent.put("/api/config").send({});
+    expect(warn.mock.calls.map(String).join("\n")).toContain("reader is a viewer, not an admin");
+  });
+});

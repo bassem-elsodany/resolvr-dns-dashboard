@@ -6,10 +6,10 @@ import LoginView from "./LoginView.vue"
 
 vi.mock("../../api/app", async () => {
   const actual = await vi.importActual<typeof import("../../api/app")>("../../api/app")
-  return { ...actual, login: vi.fn() }
+  return { ...actual, login: vi.fn(), fetchMe: vi.fn() }
 })
 
-import { login, AppApiError } from "../../api/app"
+import { login, fetchMe, AppApiError } from "../../api/app"
 
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
@@ -34,6 +34,7 @@ describe("LoginView", () => {
 
   it("logs in and redirects to / by default", async () => {
     vi.mocked(login).mockResolvedValue({ id: 1, username: "admin", role: "admin" })
+    vi.mocked(fetchMe).mockResolvedValue({ id: 1, username: "admin", role: "admin" })
     const router = makeRouter()
     await router.push("/login")
     const wrapper = mount(LoginView, { global: { plugins: [router] } })
@@ -49,6 +50,7 @@ describe("LoginView", () => {
 
   it("redirects to the originally requested page after login", async () => {
     vi.mocked(login).mockResolvedValue({ id: 2, username: "reader", role: "viewer" })
+    vi.mocked(fetchMe).mockResolvedValue({ id: 2, username: "reader", role: "viewer" })
     const router = makeRouter()
     await router.push("/login?redirect=/zones")
     const wrapper = mount(LoginView, { global: { plugins: [router] } })
