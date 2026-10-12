@@ -29,7 +29,7 @@ const twoSessions = {
         isCurrentSession: true,
         partialToken: "abc123",
         type: "ApiToken" as const,
-        tokenName: "claude",
+        tokenName: "resolvr-dashboard",
         lastSeen: "2026-09-15T12:00:00Z",
         lastSeenRemoteAddress: "10.0.60.1",
         lastSeenUserAgent: "",
@@ -71,7 +71,7 @@ describe("SessionsView", () => {
     const rows = wrapper.findAll("tbody tr")
     expect(rows[0]!.text()).toContain("this session")
     expect(rows[0]!.text()).toContain("API token")
-    expect(rows[0]!.text()).toContain("claude")
+    expect(rows[0]!.text()).toContain("resolvr-dashboard")
     expect(rows[1]!.text()).not.toContain("this session")
     expect(rows[1]!.text()).toContain("Session")
   })

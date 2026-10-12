@@ -28,8 +28,7 @@ export interface NavSection {
   items: NavItem[]
 }
 
-// Mirrors the sidebar structure in the approved wireframe
-// (https://claude.ai/artifact/KkUP4PePeDz4kVDA7ULDpM). `icon` matches
+// Mirrors the sidebar structure in the approved wireframe. `icon` matches
 // a case in components/layout/NavIcon.vue.
 export const navSections: NavSection[] = [
   { label: null, items: [{ to: "/", label: "Overview", icon: "overview" }] },

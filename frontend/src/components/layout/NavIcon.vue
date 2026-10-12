@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { NavIconName } from "./navSections"
 
-// Exact icon paths from the approved wireframe
-// (https://claude.ai/artifact/KkUP4PePeDz4kVDA7ULDpM) — one per nav
-// item, keyed by the same name used in navSections.ts.
+// Exact icon paths from the approved wireframe — one per nav item, keyed
+// by the same name used in navSections.ts.
 defineProps<{ name: NavIconName }>()
 </script>
 

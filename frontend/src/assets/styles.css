@@ -2,8 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens — ported from the approved wireframe
- * (https://claude.ai/artifact/KkUP4PePeDz4kVDA7ULDpM).
+/* Theme tokens — ported from the approved wireframe.
  *
  * :root holds the light palette as the document-wide default.
  * prefers-color-scheme switches to dark when the user has made no explicit
