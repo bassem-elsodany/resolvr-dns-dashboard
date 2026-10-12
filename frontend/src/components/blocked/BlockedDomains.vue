@@ -13,13 +13,15 @@ import { useUndoToast } from "../../composables/useUndoToast"
 import UndoToast from "../ui/UndoToast.vue"
 import ZoneTreeNode from "../zones/ZoneTreeNode.vue"
 
-const props = defineProps<{ isAdmin: boolean; highlightDomain: string | null }>()
+// `node` reads one cluster node's copy of the list; changes still go to the
+// connected node, which syncs them.
+const props = defineProps<{ isAdmin: boolean; highlightDomain: string | null; node?: string }>()
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
 const { toast, show, runUndo } = useUndoToast()
 
-const CACHE_KEY = "blocked-walk"
+const CACHE_KEY = computed(() => (props.node ? `blocked-walk-${props.node}` : "blocked-walk"))
 const TTL_MS = 60_000
 
 const domains = ref<string[]>([])
@@ -28,7 +30,7 @@ const found = ref(0)
 const truncated = ref(false)
 const loadError = ref<string | null>(null)
 
-const fetchNode = (d: string) => listBlockedZones(connection.credentials, d)
+const fetchNode = (d: string) => (props.node ? listBlockedZones(connection.credentials, d, { node: props.node }) : listBlockedZones(connection.credentials, d))
 
 async function load(force = false): Promise<void> {
   if (!connection.isConfigured) return
@@ -36,7 +38,7 @@ async function load(force = false): Promise<void> {
   found.value = 0
   try {
     const res = await cached<WalkResult>(
-      CACHE_KEY,
+      CACHE_KEY.value,
       TTL_MS,
       () => walkBlockedZones(fetchNode, { onProgress: (n) => (found.value = n) }),
       force,
@@ -53,11 +55,12 @@ async function load(force = false): Promise<void> {
 onMounted(() => void load())
 watch(() => refresh.tick, () => void load(true))
 watch(() => connection.isConfigured, (c) => c && void load())
+watch(() => props.node, () => void load())
 
 // Keeps the cached walk in step with changes made here, so coming back to
 // the page shows them without walking the tree again.
 function remember(): void {
-  void cached<WalkResult>(CACHE_KEY, TTL_MS, async () => ({ domains: domains.value, truncated: truncated.value }), true)
+  void cached<WalkResult>(CACHE_KEY.value, TTL_MS, async () => ({ domains: domains.value, truncated: truncated.value }), true)
 }
 
 // Bring a highlighted domain (one a check matched) into view once listed.

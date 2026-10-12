@@ -4,10 +4,14 @@ import { listDhcpLeases, listDhcpScopes } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
 import { cached, scopeSize } from "../../lib/charts"
+import { useStatsScopeStore } from "../../stores/statsScope"
 import ChartPanel from "../charts/ChartPanel.vue"
+import ScopeChip from "./ScopeChip.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const statsScope = useStatsScopeStore()
+const node = computed(() => statsScope.nodeParam("dhcp"))
 
 interface Row {
   name: string
@@ -18,7 +22,9 @@ const rows = ref<Row[]>([])
 const state = ref<"loading" | "ready" | "error">("loading")
 
 async function fetchRows(): Promise<Row[]> {
-  const [scopes, leases] = await Promise.all([listDhcpScopes(connection.credentials), listDhcpLeases(connection.credentials)])
+  const [scopes, leases] = await Promise.all([listDhcpScopes(connection.credentials, { node: node.value }),
+    listDhcpLeases(connection.credentials, { node: node.value }),
+  ])
   const used = new Map<string, number>()
   for (const l of leases.response.leases) used.set(l.scope, (used.get(l.scope) ?? 0) + 1)
   const out: Row[] = []
@@ -33,7 +39,7 @@ async function fetchRows(): Promise<Row[]> {
 async function load(force = false): Promise<void> {
   if (!connection.isConfigured) return
   try {
-    rows.value = await cached("dhcp-usage", 60_000, fetchRows, force)
+    rows.value = await cached(`dhcp-usage-${node.value ?? "self"}`, 60_000, fetchRows, force)
     state.value = "ready"
   } catch {
     state.value = "error"
@@ -43,6 +49,7 @@ async function load(force = false): Promise<void> {
 onMounted(() => void load())
 watch(() => refresh.tick, () => void load(true))
 watch(() => connection.isConfigured, (c) => c && void load())
+watch(node, () => void load())
 
 const HOT = 0.9
 const hottest = computed(() => [...rows.value].sort((a, b) => b.used / b.size - a.used / a.size)[0])
@@ -55,6 +62,7 @@ const warning = computed(() => {
 <template>
   <!-- A server without DHCP has nothing to show, so the panel stays out of the way. -->
   <ChartPanel v-if="state === 'loading' || rows.length > 0" title="DHCP scope usage" hint="Active leases against the size of each enabled scope.">
+    <template #actions><ScopeChip panel="dhcp" /></template>
     <p v-if="state === 'loading'" class="py-6 text-center text-sm text-gray-500">Loading…</p>
     <template v-else>
       <div

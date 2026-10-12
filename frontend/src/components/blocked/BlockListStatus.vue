@@ -5,6 +5,7 @@ import { fmtInt } from "../../lib/charts"
 import { formatAgo } from "../../lib/clients"
 import { changeSincePrevious, formatIn, freshness, readHistory, recordReading, type Reading } from "../../lib/blockLists"
 import { useChartTip } from "../../composables/useChartTip"
+import { useElementWidth } from "../../composables/useElementWidth"
 import ChartTip from "../charts/ChartTip.vue"
 
 const props = defineProps<{
@@ -18,6 +19,9 @@ const props = defineProps<{
   hasUnsavedFeeds: boolean
   // Reads the server's current next-update time and total, for watching an update finish.
   fetchStatus: () => Promise<{ next?: string; total: number | null }>
+  // Nodes to send Update now to (undefined entries mean the connected node).
+  // On a cluster each node downloads the lists itself.
+  updateTargets?: (string | undefined)[]
 }>()
 
 const emit = defineEmits<{ (e: "updated"): void }>()
@@ -50,7 +54,10 @@ function signed(n: number): string {
 }
 
 const { tip, show, hide } = useChartTip()
-const W = 320
+// Fixed height, fluid width, so a wide window lengthens the time axis
+// rather than making the chart taller.
+const chartBox = ref<SVGSVGElement | null>(null)
+const W = useElementWidth(chartBox, 320, 240, 1600)
 const H = 90
 const PAD_X = 6
 const PAD_TOP = 8
@@ -62,7 +69,7 @@ const chart = computed(() => {
   const mn = Math.min(...totals)
   const mx = Math.max(...totals)
   const pad = Math.max(1, (mx - mn) * 0.15)
-  const x = (i: number) => PAD_X + (i / (h.length - 1)) * (W - 2 * PAD_X)
+  const x = (i: number) => PAD_X + (i / (h.length - 1)) * (W.value - 2 * PAD_X)
   const y = (v: number) => PAD_TOP + (1 - (v - (mn - pad)) / (mx + pad - (mn - pad))) * (H - PAD_TOP - PAD_BOTTOM)
   const line = h.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.total).toFixed(1)}`).join("")
   return { x, y, line, area: `${line}L${x(h.length - 1)},${H - PAD_BOTTOM}L${x(0)},${H - PAD_BOTTOM}Z` }
@@ -78,8 +85,8 @@ function onMove(e: PointerEvent): void {
   const rect = svgEl.value!.getBoundingClientRect()
   const h = history.value
   if (rect.width === 0 || h.length < 2) return
-  const vx = ((e.clientX - rect.left) / rect.width) * W
-  const i = Math.max(0, Math.min(h.length - 1, Math.round(((vx - PAD_X) / (W - 2 * PAD_X)) * (h.length - 1))))
+  const vx = ((e.clientX - rect.left) / rect.width) * W.value
+  const i = Math.max(0, Math.min(h.length - 1, Math.round(((vx - PAD_X) / (W.value - 2 * PAD_X)) * (h.length - 1))))
   hoverIndex.value = i
   const prev = h[i - 1]
   show(e, stamp(h[i]!.t), [
@@ -125,7 +132,8 @@ async function startUpdate(): Promise<void> {
   elapsedTimer = setInterval(() => (elapsed.value = Math.round((Date.now() - startedAt.value) / 1000)), 1000)
   const before = { next: props.nextUpdatedOn, total: props.total }
   try {
-    await forceUpdateBlockLists()
+    const nodes = props.updateTargets && props.updateTargets.length > 0 ? props.updateTargets : [undefined]
+    await Promise.all(nodes.map((n) => (n ? forceUpdateBlockLists(n) : forceUpdateBlockLists())))
     for (let i = 0; i < MAX_POLLS; i++) {
       await sleep(POLL_MS)
       const s = await props.fetchStatus()
@@ -237,7 +245,7 @@ defineExpose({ startUpdate })
       </p>
       <svg
         v-if="chart"
-        ref="svgEl"
+        :ref="(el) => { svgEl = el as SVGSVGElement | null; chartBox = el as SVGSVGElement | null }"
         :viewBox="`0 0 ${W} ${H}`"
         class="block h-auto w-full cursor-crosshair"
         role="img"

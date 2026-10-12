@@ -17,6 +17,9 @@ import {
   rememberClients,
   knownAtPageLoad,
   resetKnownForTests,
+  singleNode,
+  mergeEntries,
+  bucketByNode,
   type ClientRow,
 } from "./clients"
 
@@ -188,5 +191,47 @@ describe("knownAtPageLoad", () => {
     const first = knownAtPageLoad()
     rememberClients(["b"], first)
     expect([...knownAtPageLoad()!]).toEqual(["a"])
+  })
+})
+
+describe("cluster helpers", () => {
+  const base = { ip: "10.0.0.1", hostname: null, hits: 100, blocked: 0, rateLimited: false, lastSeen: null }
+
+  it("a client that only ever used one node of a cluster is flagged, one that used both is not", () => {
+    expect(singleNode({ ...base, byNode: { n1: 80, n2: 0 } })).toBe("n1")
+    expect(singleNode({ ...base, byNode: { n1: 60, n2: 40 } })).toBeNull()
+  })
+
+  it("a standalone server, or a cluster of one, has no single-node clients", () => {
+    expect(singleNode(base)).toBeNull()
+    expect(singleNode({ ...base, byNode: { n1: 100 } })).toBeNull()
+    expect(matchesFilter({ ...base, byNode: { n1: 5, n2: 0 } }, "single", new Set())).toBe(true)
+    expect(matchesFilter(base, "single", new Set())).toBe(false)
+  })
+
+  it("merges nodes' logs latest first and keeps the limit", () => {
+    const e = (t: string, node: string) => ({ timestamp: t, node }) as never
+    const merged = mergeEntries(
+      [
+        [e("2026-10-12T10:00:00Z", "n1"), e("2026-10-12T08:00:00Z", "n1")],
+        [e("2026-10-12T09:00:00Z", "n2")],
+      ],
+      2,
+    )
+
+    expect(merged.map((m) => m.timestamp)).toEqual(["2026-10-12T10:00:00Z", "2026-10-12T09:00:00Z"])
+  })
+
+  it("buckets each node's entries on one shared time axis", () => {
+    const e = (t: string, node: string) => ({ timestamp: t, node, responseType: "Cached" }) as never
+    const b = bucketByNode(
+      [e("2026-10-12T00:00:00Z", "n1"), e("2026-10-12T00:30:00Z", "n2"), e("2026-10-12T01:00:00Z", "n1")],
+      ["n1", "n2"],
+      2,
+    )!
+
+    expect(b.series.n1).toEqual([1, 1])
+    expect(b.series.n2).toEqual([0, 1])
+    expect(b.end - b.start).toBe(3600_000)
   })
 })

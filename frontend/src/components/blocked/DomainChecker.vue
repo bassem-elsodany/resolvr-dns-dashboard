@@ -4,6 +4,10 @@ import { resolveDnsQuery, TechnitiumApiError } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { isValidDomain, normalizeDomain, parseVerdict, type Verdict } from "../../lib/blockLists"
 
+// On a cluster each node downloads the lists itself, so each can answer
+// differently while one lags: `targets` asks every node in scope.
+const props = defineProps<{ targets?: { node: string | undefined; name: string }[] }>()
+
 const emit = defineEmits<{
   (e: "matched", match: { feed: string | null; domain: string | null }): void
   // Asks the page to bring forward the tab that holds what matched.
@@ -16,11 +20,13 @@ const checking = ref(false)
 const verdict = ref<Verdict | null>(null)
 const checkedName = ref("")
 const message = ref<string | null>(null)
+const perNode = ref<{ name: string; verdict: Verdict | null }[]>([])
 
 async function check(): Promise<void> {
   const name = normalizeDomain(input.value)
   verdict.value = null
   message.value = null
+  perNode.value = []
   emit("matched", { feed: null, domain: null })
   if (!isValidDomain(name)) {
     message.value = "Enter a domain like example.com."
@@ -29,9 +35,28 @@ async function check(): Promise<void> {
   checking.value = true
   checkedName.value = name
   try {
-    // "this-server" asks your own server, so its blocking applies.
-    const res = await resolveDnsQuery(name, "A", connection.credentials, { server: "this-server", protocol: "Udp" })
-    verdict.value = parseVerdict(res)
+    const many = props.targets && props.targets.length > 1 ? props.targets : null
+    if (many) {
+      const settled = await Promise.allSettled(
+        many.map(async (t) => {
+          const res = await resolveDnsQuery(name, "A", connection.credentials, {
+            server: "this-server",
+            protocol: "Udp",
+            ...(t.node ? { node: t.node } : {}),
+          })
+          return parseVerdict(res)
+        }),
+      )
+      perNode.value = settled.map((s, i) => ({ name: many[i]!.name, verdict: s.status === "fulfilled" ? s.value : null }))
+      const answered = perNode.value.flatMap((p) => (p.verdict ? [p.verdict] : []))
+      if (answered.length === 0) throw new TechnitiumApiError("No node could be asked.", 0)
+      // The page points at what matched, so prefer a node that blocked it.
+      verdict.value = answered.find((v) => v.kind === "blocked") ?? answered[0]!
+    } else {
+      // "this-server" asks your own server, so its blocking applies.
+      const res = await resolveDnsQuery(name, "A", connection.credentials, { server: "this-server", protocol: "Udp" })
+      verdict.value = parseVerdict(res)
+    }
     if (verdict.value.kind === "blocked") {
       emit("matched", { feed: verdict.value.source === "feed" ? verdict.value.feedUrl : null, domain: verdict.value.source === "own" ? verdict.value.matched : null })
     }
@@ -61,6 +86,17 @@ async function check(): Promise<void> {
         {{ checking ? "Checking…" : "Check" }}
       </button>
     </form>
+
+    <ul v-if="perNode.length > 1" id="check-per-node" class="mt-2.5 flex flex-col gap-1.5 text-[12.5px]">
+      <li v-for="p in perNode" :key="p.name" class="flex flex-wrap items-center gap-2">
+        <span class="w-24 font-mono text-gray-500">{{ p.name.split(".")[0] }}</span>
+        <span v-if="!p.verdict" class="text-warn">could not be asked</span>
+        <span v-else-if="p.verdict.kind === 'blocked'" class="font-semibold text-crit">Blocked</span>
+        <span v-else-if="p.verdict.kind === 'allowed'" class="font-semibold text-ok">Allowed</span>
+        <span v-else-if="p.verdict.kind === 'not-found'" class="text-gray-500">Not found</span>
+        <span v-else class="text-gray-500">No clear answer</span>
+      </li>
+    </ul>
 
     <p v-if="message" id="check-message" class="mt-2.5 rounded-lg bg-background-hover px-3 py-2 text-[13px] text-gray-300">{{ message }}</p>
     <div v-if="verdict" id="check-verdict" class="mt-2.5 rounded-lg px-3 py-2.5 text-[13px]" :class="verdict.kind === 'blocked' ? 'bg-crit/12 text-crit' : verdict.kind === 'allowed' ? 'bg-ok/15 text-ok' : 'bg-background-hover text-gray-300'">

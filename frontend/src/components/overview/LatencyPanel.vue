@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import { fmtInt, latencyBins, pct, percentileBin, SLOW_BIN_FROM } from "../../lib/charts"
 import { useChartTip } from "../../composables/useChartTip"
+import { useElementWidth } from "../../composables/useElementWidth"
 import ChartPanel from "../charts/ChartPanel.vue"
 import ChartTip from "../charts/ChartTip.vue"
+import ScopeChip from "./ScopeChip.vue"
 
 const props = defineProps<{
   // Round-trip times in ms of the sampled queries that went upstream.
@@ -14,7 +16,8 @@ const props = defineProps<{
 
 const { tip, show, hide } = useChartTip()
 
-const W = 360
+const svgBox = ref<SVGSVGElement | null>(null)
+const W = useElementWidth(svgBox, 360, 260, 1200)
 const H = 170
 const PAD = 6
 const BOTTOM = 30
@@ -22,7 +25,7 @@ const bins = computed(() => latencyBins(props.rtts))
 const total = computed(() => props.rtts.length)
 const slow = computed(() => bins.value.slice(SLOW_BIN_FROM).reduce((a, b) => a + b.count, 0))
 const yMax = computed(() => Math.max(1, ...bins.value.map((b) => b.count)))
-const bw = computed(() => (W - PAD * 2) / bins.value.length)
+const bw = computed(() => (W.value - PAD * 2) / bins.value.length)
 const plotH = H - BOTTOM - 8
 const bars = computed(() =>
   bins.value.map((b, i) => {
@@ -35,6 +38,7 @@ const gridY = computed(() => [0, 0.5, 1].map((f) => 8 + (1 - f) * plotH))
 
 <template>
   <ChartPanel title="Response time" hint="Upstream round-trip time of the latest logged queries that were not served from cache.">
+    <template #actions><ScopeChip panel="responseTime" /></template>
     <p v-if="state === 'loading'" class="py-8 text-center text-sm text-gray-500">Loading…</p>
     <p v-else-if="state === 'missing'" class="py-8 text-center text-sm text-gray-500">
       Needs a query-logging app installed on the Technitium server.
@@ -56,7 +60,7 @@ const gridY = computed(() => [0, 0.5, 1].map((f) => 8 + (1 - f) * plotH))
           over 100 ms
         </div>
       </div>
-      <svg :viewBox="`0 0 ${W} ${H}`" class="block h-auto w-full" role="img" aria-label="Response time distribution">
+      <svg ref="svgBox" :viewBox="`0 0 ${W} ${H}`" class="block h-auto w-full" role="img" aria-label="Response time distribution">
         <line
           v-for="(y, i) in gridY"
           :key="i"

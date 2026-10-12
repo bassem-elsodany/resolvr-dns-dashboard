@@ -4,13 +4,17 @@ import { useRouter } from "vue-router"
 import type { DashboardStatsResult } from "../../api/technitium"
 import { bucketEnd, fmtInt, fullLabel, niceMax, pct, tickLabel } from "../../lib/charts"
 import { useChartTip } from "../../composables/useChartTip"
+import { useElementWidth } from "../../composables/useElementWidth"
 import ChartTip from "../charts/ChartTip.vue"
 
 const props = defineProps<{ chart: DashboardStatsResult["response"]["mainChartData"] }>()
 const router = useRouter()
 const { tip, show, hide } = useChartTip()
 
-const W = 720
+// Fixed height, fluid width: the chart is drawn at the width of its box, so a
+// wide window gives a longer time axis, not a taller chart.
+const chartBox = ref<HTMLElement | null>(null)
+const W = useElementWidth(chartBox, 720, 420, 2400)
 const H = 250
 const ML = 46
 const MR = 12
@@ -86,7 +90,7 @@ const ymax = computed(() => {
   return niceMax(mx * 1.05)
 })
 
-const x = (i: number) => ML + ((i - view.lo) / Math.max(1, span.value - 1)) * (W - ML - MR)
+const x = (i: number) => ML + ((i - view.lo) / Math.max(1, span.value - 1)) * (W.value - ML - MR)
 const y = (v: number) => MT + (1 - v / ymax.value) * (H - MT - MB)
 
 const yTicks = computed(() => [0, 1, 2, 3, 4].map((t) => ({ y: y((ymax.value * t) / 4), label: fmtInt((ymax.value * t) / 4), axis: t === 0 })))
@@ -155,8 +159,8 @@ const svgEl = ref<SVGSVGElement | null>(null)
 function indexAt(e: PointerEvent): number {
   const rect = svgEl.value!.getBoundingClientRect()
   if (rect.width === 0) return view.lo
-  const vx = ((e.clientX - rect.left) / rect.width) * W
-  const i = view.lo + Math.round(((vx - ML) / (W - ML - MR)) * (span.value - 1))
+  const vx = ((e.clientX - rect.left) / rect.width) * W.value
+  const i = view.lo + Math.round(((vx - ML) / (W.value - ML - MR)) * (span.value - 1))
   return Math.max(view.lo, Math.min(view.hi, i))
 }
 
@@ -286,7 +290,7 @@ function resetZoom(): void {
         </div>
       </div>
 
-      <div id="queries-chart" class="relative touch-pan-y">
+      <div id="queries-chart" ref="chartBox" class="relative touch-pan-y">
         <svg
           ref="svgEl"
           :viewBox="`0 0 ${W} ${H}`"

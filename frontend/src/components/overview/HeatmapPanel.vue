@@ -4,6 +4,8 @@ import { useRouter } from "vue-router"
 import { getDashboardStats, type DashboardStatsResult } from "../../api/technitium"
 import { useConnectionStore } from "../../stores/connection"
 import { useRefreshStore } from "../../stores/refresh"
+import { useStatsScopeStore } from "../../stores/statsScope"
+import ScopeChip from "./ScopeChip.vue"
 import { bucketHeatmap, cached, fmtInt, lastOccurrence } from "../../lib/charts"
 import { useChartTip } from "../../composables/useChartTip"
 import ChartPanel from "../charts/ChartPanel.vue"
@@ -11,6 +13,8 @@ import ChartTip from "../charts/ChartTip.vue"
 
 const connection = useConnectionStore()
 const refresh = useRefreshStore()
+const statsScope = useStatsScopeStore()
+const node = computed(() => statsScope.nodeParam("heatmap"))
 const router = useRouter()
 const { tip, show, hide } = useChartTip()
 
@@ -31,6 +35,7 @@ async function fetchWeek(): Promise<{ time: string; value: number }[]> {
     [0, 1, 2].map((i) =>
       getDashboardStats("Custom", connection.credentials, {
         utc: true,
+        node: node.value,
         start: new Date(edges[i]!).toISOString(),
         end: new Date(edges[i + 1]!).toISOString(),
       }),
@@ -49,7 +54,7 @@ async function fetchWeek(): Promise<{ time: string; value: number }[]> {
 async function load(force = false): Promise<void> {
   if (!connection.isConfigured) return
   try {
-    const points = await cached("heatmap-week", TTL_MS, fetchWeek, force)
+    const points = await cached(`heatmap-week-${node.value ?? "self"}`, TTL_MS, fetchWeek, force)
     grid.value = bucketHeatmap(points)
     state.value = "ready"
   } catch {
@@ -60,6 +65,7 @@ async function load(force = false): Promise<void> {
 onMounted(() => void load())
 watch(() => refresh.tick, () => void load(true))
 watch(() => connection.isConfigured, (c) => c && void load())
+watch(node, () => void load())
 
 const max = computed(() => Math.max(1, ...grid.value.flat()))
 const quiet = computed(() => max.value <= 1)
@@ -80,6 +86,7 @@ function onClick(day: number, hour: number): void {
 
 <template>
   <ChartPanel title="When your network is busy" hint="Queries per hour over the last 7 days. Click a cell to see that hour in Query Logs.">
+    <template #actions><ScopeChip panel="heatmap" /></template>
     <p v-if="state === 'loading'" class="py-8 text-center text-sm text-gray-500">Loading…</p>
     <p v-else-if="state === 'error'" class="py-8 text-center text-sm text-gray-500">Could not load the last 7 days of activity.</p>
     <p v-else-if="quiet" class="py-8 text-center text-sm text-gray-500">No queries recorded in the last 7 days.</p>
@@ -95,8 +102,8 @@ function onClick(day: number, hour: number): void {
             <div
               v-for="(v, h) in row"
               :key="h"
-              class="heat-cell min-h-3.5 cursor-pointer rounded-[3px]"
-              :style="{ ...cellStyle(v), aspectRatio: '1.5' }"
+              class="heat-cell h-6 cursor-pointer rounded-[3px]"
+              :style="cellStyle(v)"
               @pointermove="show($event, `${DAYS[d]} ${hourLabel(h)}`, [{ label: 'queries', value: fmtInt(v) }])"
               @pointerleave="hide"
               @click="onClick(d, h)"

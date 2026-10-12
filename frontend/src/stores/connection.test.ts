@@ -41,6 +41,21 @@ describe("connection store", () => {
     expect(store.error).toBeNull()
   })
 
+  it("remembers whether the connected server is part of a Technitium cluster", async () => {
+    vi.mocked(getStatus).mockResolvedValue({
+      configured: true,
+      connected: true,
+      serverDomain: "node1.cluster.test",
+      serverVersion: "15.6.1",
+      clusterInitialized: true,
+    })
+    const store = useConnectionStore()
+
+    await store.testConnection()
+
+    expect(store.clusterInitialized).toBe(true)
+  })
+
   it("reports an error status when the backend has a config but can't reach Technitium", async () => {
     vi.mocked(getStatus).mockResolvedValue({
       configured: true,

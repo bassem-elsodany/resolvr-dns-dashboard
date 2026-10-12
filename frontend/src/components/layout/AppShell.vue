@@ -2,7 +2,7 @@
 
 const appVersion = __APP_VERSION__
 import { ref, watch, onMounted } from "vue"
-import { useRouter } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useThemeStore } from "../../stores/theme"
 import { useServerUpdateStore } from "../../stores/serverUpdate"
@@ -22,6 +22,9 @@ const timeRange = useTimeRangeStore()
 const refresh = useRefreshStore()
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+// Pages whose charts and lists use the whole window; the rest keep a readable width.
+const FULL_WIDTH = ["/", "/clients", "/logs", "/cache", "/zones", "/allowed", "/blocked", "/dhcp", "/resolver", "/apps", "/server", "/sessions", "/users"]
 const mobileOpen = ref(false)
 
 async function onLogout(): Promise<void> {
@@ -256,7 +259,7 @@ function navBadgeClass(to: string): string {
         </div>
       </header>
 
-      <div class="w-full max-w-6xl flex-1 px-5 py-6">
+      <div class="w-full flex-1 px-5 py-6" :class="FULL_WIDTH.includes(route.path) ? '' : 'max-w-6xl'">
         <router-view />
       </div>
     </div>

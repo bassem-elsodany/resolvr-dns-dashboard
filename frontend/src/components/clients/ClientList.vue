@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { fmtInt, pct } from "../../lib/charts"
+import { NODE_COLORS } from "../../stores/statsScope"
 import {
   blockedShare,
   displayName,
@@ -20,6 +21,10 @@ const props = defineProps<{
   sort: ClientSort
   search: string
   counts: Record<ClientFilter, number>
+  // The cluster's nodes, in order, when the page covers more than one: each
+  // row then shows how its queries were shared between them.
+  nodes?: string[]
+  showSingle?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +43,27 @@ const FILTERS: { id: ClientFilter; label: string }[] = [
 ]
 // "Needs a look" is reached from its summary tile, so it only appears as a
 // chip while it is the active filter.
-const chips = computed(() => (props.filter === "attention" ? [...FILTERS, { id: "attention" as ClientFilter, label: "Needs a look" }] : FILTERS))
+const chips = computed(() => {
+  const list = [...FILTERS]
+  // Clients that only ever used one node: usually a device set up with a
+  // single DNS server, so it is not using the second one.
+  if (props.showSingle) list.push({ id: "single", label: "One node only" })
+  if (props.filter === "attention") list.push({ id: "attention", label: "Needs a look" })
+  return list
+})
+
+// Each node's share of a client's queries, as widths for the split bar.
+function split(c: ClientRow): { name: string; pct: number; color: string }[] {
+  const names = props.nodes ?? []
+  const by = c.byNode
+  if (names.length < 2 || !by) return []
+  const total = names.reduce((n, name) => n + (by[name] ?? 0), 0)
+  if (total === 0) return []
+  return names.map((name, i) => ({ name, pct: ((by[name] ?? 0) / total) * 100, color: NODE_COLORS[i % NODE_COLORS.length]! }))
+}
+function splitTitle(c: ClientRow): string {
+  return split(c).map((s) => `${s.name} ${Math.round(s.pct)}%`).join(" / ")
+}
 
 function onKey(e: KeyboardEvent): void {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return
@@ -127,6 +152,15 @@ function onKey(e: KeyboardEvent): void {
           <span class="block text-[11px] text-gray-500">{{ pct(c.blocked, c.hits, 0) }} blocked</span>
           <span class="mt-0.5 flex h-1 overflow-hidden rounded-full bg-chart-blue/30" aria-hidden="true">
             <span class="block h-full bg-chart-red" :style="{ width: `${Math.min(100, blockedShare(c) * 100)}%` }" />
+          </span>
+          <span
+            v-if="split(c).length"
+            class="client-split mt-1 flex h-1 overflow-hidden rounded-full bg-background-hover"
+            role="img"
+            :aria-label="splitTitle(c)"
+            :title="splitTitle(c)"
+          >
+            <span v-for="s in split(c)" :key="s.name" class="block h-full" :style="{ width: `${s.pct}%`, background: s.color }" />
           </span>
         </span>
       </button>

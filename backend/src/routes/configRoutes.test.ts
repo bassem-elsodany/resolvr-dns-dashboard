@@ -136,6 +136,38 @@ describe("configRoutes", () => {
     expect(res.body.error).toContain("ECONNREFUSED");
   });
 
+  // Lets the dashboard offer a "whole cluster" view (Technitium's
+  // `node=cluster` aggregate) only when the server is in a cluster.
+  it("reports whether the connected server is part of a Technitium cluster", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () =>
+      jsonResponse({
+        status: "ok",
+        info: { dnsServerDomain: "node1.cluster.test", version: "15.6.1", clusterInitialized: true },
+      }),
+    );
+    const { app } = testApp(fetchImpl);
+    const saved = await request(app).put("/api/config").send({ baseUrl: "http://192.168.1.53:5380", token: "secret" });
+
+    const status = await request(app).get("/api/status");
+
+    expect(saved.body.clusterInitialized).toBe(true);
+    expect(status.body).toMatchObject({ connected: true, clusterInitialized: true });
+  });
+
+  it("reports clusterInitialized false for a standalone server or one that does not say", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () =>
+        jsonResponse({ status: "ok", info: { dnsServerDomain: "dns.example.lan", version: "15.4" } }),
+      );
+    const { app } = testApp(fetchImpl);
+    await request(app).put("/api/config").send({ baseUrl: "http://192.168.1.53:5380", token: "secret" });
+
+    const status = await request(app).get("/api/status");
+
+    expect(status.body).toMatchObject({ connected: true, clusterInitialized: false });
+  });
+
   it("reports unconfigured status when nothing has been saved yet", async () => {
     const { app } = testApp(vi.fn());
 
@@ -160,6 +192,7 @@ describe("configRoutes", () => {
       connected: true,
       serverDomain: "dns.example.lan",
       serverVersion: "15.4",
+      clusterInitialized: false,
       error: null,
     });
   });

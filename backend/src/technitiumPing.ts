@@ -6,6 +6,9 @@ export interface PingResult {
   ok: boolean;
   serverDomain?: string;
   serverVersion?: string;
+  // True when the server is part of a Technitium cluster, so the dashboard
+  // can offer Technitium's aggregate `node=cluster` stats.
+  clusterInitialized?: boolean;
   error?: string;
 }
 
@@ -31,7 +34,7 @@ export async function pingTechnitium(
       server?: string;
       status?: string;
       errorMessage?: string;
-      info?: { dnsServerDomain?: string; version?: string };
+      info?: { dnsServerDomain?: string; version?: string; clusterInitialized?: boolean };
     };
     try {
       // Unlike most Technitium endpoints, /user/session/get does not wrap
@@ -62,6 +65,7 @@ export async function pingTechnitium(
       ok: true,
       serverDomain: body.info?.dnsServerDomain,
       serverVersion: body.info?.version,
+      clusterInitialized: body.info?.clusterInitialized === true,
     };
   } catch (err) {
     // Node's fetch reports just "fetch failed"; the real reason (refused,

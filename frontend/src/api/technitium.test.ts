@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   getUserSession,
   getDashboardStats,
+  getTopStats,
+  listZones,
+  listDhcpScopes,
+  listDhcpLeases,
+  queryLogs,
+  getClusterState,
   exportBlockedZones,
   TechnitiumApiError,
   type TechnitiumCredentials,
@@ -52,6 +58,75 @@ describe("technitium API client", () => {
     expect(url.pathname).toBe("/api/technitium/dashboard/stats/get")
     expect(url.searchParams.get("type")).toBe("LastDay")
     expect(url.searchParams.get("utc")).toBe("true")
+  })
+
+  // Technitium aggregates only the two stats endpoints across a cluster
+  // (`node=cluster`); the caller opts in per call, and per-node calls never
+  // carry it.
+  describe("node option (cluster scope)", () => {
+    it("adds node=cluster to dashboard stats and top stats when the caller passes it", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ response: { stats: {}, mainChartData: {} } }))
+
+      await getDashboardStats("LastHour", credentials, { node: "cluster" })
+      await getTopStats("TopClients", "LastHour", credentials, { node: "cluster" })
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      for (const call of fetchMock.mock.calls) {
+        expect(new URL(String(call[0])).searchParams.get("node")).toBe("cluster")
+      }
+    })
+
+    it("sends no node parameter unless the caller asks for one", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ response: { stats: {}, mainChartData: {} } }))
+
+      await getDashboardStats("LastHour", credentials)
+      await getTopStats("TopClients", "LastHour", credentials, { node: undefined })
+
+      for (const call of fetchMock.mock.calls) {
+        expect(new URL(String(call[0])).searchParams.has("node")).toBe(false)
+      }
+    })
+
+    it("has no cluster option on per-node calls such as the zone list", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ response: { zones: [], pageNumber: 1, totalPages: 1, totalZones: 0 } }))
+
+      await listZones(credentials)
+
+      expect(new URL(String(fetchMock.mock.calls[0]![0])).searchParams.has("node")).toBe(false)
+    })
+  })
+
+  describe("aiming a call at one cluster node", () => {
+    it("passes node on the per-node calls that support it", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ response: {} }))
+
+      await listZones(credentials, { node: "node2.cluster.test" })
+      await listDhcpScopes(credentials, { node: "node2.cluster.test" })
+      await listDhcpLeases(credentials, { node: "node2.cluster.test" })
+      await queryLogs(credentials, { name: "Query Logs (Sqlite)", classPath: "QueryLogsSqlite.App" }, { node: "node2.cluster.test" })
+
+      expect(fetchMock).toHaveBeenCalledTimes(4)
+      for (const call of fetchMock.mock.calls) {
+        expect(new URL(String(call[0])).searchParams.get("node")).toBe("node2.cluster.test")
+      }
+    })
+
+    it("sends no node when none is given", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ response: {} }))
+
+      await listDhcpScopes(credentials)
+
+      expect(new URL(String(fetchMock.mock.calls[0]![0])).searchParams.has("node")).toBe(false)
+    })
+
+    it("reads the cluster state through the proxy", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ response: { clusterInitialized: true, clusterNodes: [] } }))
+
+      const res = await getClusterState(credentials)
+
+      expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe("/api/technitium/admin/cluster/state")
+      expect(res.response.clusterInitialized).toBe(true)
+    })
   })
 
   it("returns the parsed JSON body on success", async () => {

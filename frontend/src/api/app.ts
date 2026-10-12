@@ -56,6 +56,8 @@ export interface ServerStatus {
   connected: boolean
   serverDomain: string | null
   serverVersion: string | null
+  // True when the server is part of a Technitium cluster.
+  clusterInitialized?: boolean
   error?: string | null
 }
 
@@ -82,7 +84,7 @@ export function getServerConfig(): Promise<{ baseUrl: string; token: string; man
 export function setServerConfig(
   baseUrl: string,
   token: string,
-): Promise<{ status: string; serverDomain: string; serverVersion: string }> {
+): Promise<{ status: string; serverDomain: string; serverVersion: string; clusterInitialized?: boolean }> {
   return call("/api/config", { method: "PUT", body: JSON.stringify({ baseUrl, token }) })
 }
 
@@ -104,20 +106,24 @@ export function changeUserPassword(id: number, password: string): Promise<{ stat
 
 // Admin-only mutating actions — the one deliberate exception to this
 // dashboard's read-only design (see backend/src/routes/actionRoutes.ts).
-export function flushCache(): Promise<{ status: string }> {
-  return call("/api/actions/flush-cache", { method: "POST" })
+// `node` flushes one node of a cluster (each keeps its own cache); left out,
+// the connected node is flushed.
+export function flushCache(node?: string): Promise<{ status: string }> {
+  return call("/api/actions/flush-cache", { method: "POST", ...(node ? { body: JSON.stringify({ node }) } : {}) })
 }
 
-export function forceUpdateBlockLists(): Promise<{ status: string }> {
-  return call("/api/actions/update-block-lists", { method: "POST" })
+// `node` aims the action at one node of a cluster; left out, the connected
+// node is used. The same goes for the other node-aware actions below.
+export function forceUpdateBlockLists(node?: string): Promise<{ status: string }> {
+  return call("/api/actions/update-block-lists", { method: "POST", ...(node ? { body: JSON.stringify({ node }) } : {}) })
 }
 
-export function revokeSession(partialToken: string): Promise<{ status: string }> {
-  return call("/api/actions/revoke-session", { method: "POST", body: JSON.stringify({ partialToken }) })
+export function revokeSession(partialToken: string, node?: string): Promise<{ status: string }> {
+  return call("/api/actions/revoke-session", { method: "POST", body: JSON.stringify(node ? { partialToken, node } : { partialToken }) })
 }
 
-export function updateBlockListUrls(urls: string[]): Promise<{ status: string }> {
-  return call("/api/actions/block-list-urls", { method: "PUT", body: JSON.stringify({ urls }) })
+export function updateBlockListUrls(urls: string[], node?: string): Promise<{ status: string }> {
+  return call("/api/actions/block-list-urls", { method: "PUT", body: JSON.stringify(node ? { urls, node } : { urls }) })
 }
 
 export function blockDomain(domain: string): Promise<{ status: string }> {
@@ -128,16 +134,16 @@ export function unblockDomain(domain: string): Promise<{ status: string }> {
   return call("/api/actions/unblock-domain", { method: "POST", body: JSON.stringify({ domain }) })
 }
 
-export function uninstallApp(name: string): Promise<{ status: string }> {
-  return call("/api/actions/uninstall-app", { method: "POST", body: JSON.stringify({ name }) })
+export function uninstallApp(name: string, node?: string): Promise<{ status: string }> {
+  return call("/api/actions/uninstall-app", { method: "POST", body: JSON.stringify(node ? { name, node } : { name }) })
 }
 
 // Host-to-IP mapping (the AdGuard "DNS rewrites" equivalent) — see
 // backend/src/routes/actionRoutes.ts for why this is a zone create
 // followed by a record add, mirroring the one-zone-per-hostname
 // pattern already used on this server.
-export function createZone(zone: string): Promise<{ status: string }> {
-  return call("/api/actions/create-zone", { method: "POST", body: JSON.stringify({ zone }) })
+export function createZone(zone: string, node?: string): Promise<{ status: string }> {
+  return call("/api/actions/create-zone", { method: "POST", body: JSON.stringify(node ? { zone, node } : { zone }) })
 }
 
 export function addRecord(params: {
@@ -146,10 +152,11 @@ export function addRecord(params: {
   type: "A" | "AAAA"
   ipAddress: string
   ttl?: number
+  node?: string
 }): Promise<{ status: string }> {
   return call("/api/actions/add-record", { method: "POST", body: JSON.stringify(params) })
 }
 
-export function deleteZone(zone: string): Promise<{ status: string }> {
-  return call("/api/actions/delete-zone", { method: "POST", body: JSON.stringify({ zone }) })
+export function deleteZone(zone: string, node?: string): Promise<{ status: string }> {
+  return call("/api/actions/delete-zone", { method: "POST", body: JSON.stringify(node ? { zone, node } : { zone }) })
 }
