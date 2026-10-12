@@ -31,6 +31,7 @@ export function statusRoute(db: Database, options: ConfigRoutesOptions = {}) {
       connected: result.ok,
       serverDomain: result.serverDomain ?? null,
       serverVersion: result.serverVersion ?? null,
+      clusterInitialized: result.clusterInitialized ?? false,
       error: result.ok ? null : result.error,
     });
   };
@@ -69,7 +70,12 @@ export function configRoutes(db: Database, options: ConfigRoutesOptions = {}): R
     }
 
     db.prepare("UPDATE app_config SET base_url = ?, token = ? WHERE id = 1").run(cleanBaseUrl, cleanToken);
-    res.json({ status: "ok", serverDomain: result.serverDomain, serverVersion: result.serverVersion });
+    res.json({
+      status: "ok",
+      serverDomain: result.serverDomain,
+      serverVersion: result.serverVersion,
+      clusterInitialized: result.clusterInitialized ?? false,
+    });
   });
 
   return router;

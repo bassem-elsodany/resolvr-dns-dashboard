@@ -3,6 +3,19 @@ import type { Database } from "better-sqlite3";
 import { callTechnitiumAction } from "../technitiumAction.js";
 import type { AppConfigRow } from "../db.js";
 
+// A cluster node's domain name: letters, digits, dots and hyphens only, so a
+// caller can never inject another parameter or path through it.
+const NODE_NAME = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
+
+// The optional `node` of a request body: undefined when absent (the
+// connected node answers), the name when valid, null when it is not a plain
+// host name. Used by every action that can be aimed at one cluster node.
+function readNode(body: unknown): string | undefined | null {
+  const node = (body as { node?: unknown } | undefined)?.node;
+  if (node === undefined) return undefined;
+  return typeof node === "string" && NODE_NAME.test(node) ? node : null;
+}
+
 export interface ActionRoutesOptions {
   fetchImpl?: typeof fetch;
 }
@@ -21,13 +34,26 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
   const fetchImpl = options.fetchImpl ?? fetch;
   const router = Router();
 
-  router.post("/flush-cache", async (_req, res) => {
+  // On a Technitium cluster each node keeps its own cache. `node` aims the
+  // flush at one of them; left out, the connected node is flushed.
+  router.post("/flush-cache", async (req, res) => {
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
     }
-    const result = await callTechnitiumAction(config.base_url, config.token, "/cache/flush", {}, fetchImpl);
+    const result = await callTechnitiumAction(
+      config.base_url,
+      config.token,
+      "/cache/flush",
+      node ? { node } : {},
+      fetchImpl,
+    );
     if (!result.ok) {
       res.status(502).json({ error: result.error });
       return;
@@ -35,7 +61,12 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
     res.json({ status: "ok" });
   });
 
-  router.post("/update-block-lists", async (_req, res) => {
+  router.post("/update-block-lists", async (req, res) => {
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -45,7 +76,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/settings/forceUpdateBlockLists",
-      {},
+      node ? { node } : {},
       fetchImpl,
     );
     if (!result.ok) {
@@ -74,6 +105,11 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "Feed entries cannot contain commas or line breaks." });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -84,7 +120,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/settings/set",
-      { blockListUrls: value },
+      { blockListUrls: value, ...(node ? { node } : {}) },
       fetchImpl,
     );
     if (!result.ok) {
@@ -159,6 +195,11 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "name is required" });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -168,7 +209,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/apps/uninstall",
-      { name: name.trim() },
+      { name: name.trim(), ...(node ? { node } : {}) },
       fetchImpl,
     );
     if (!result.ok) {
@@ -191,6 +232,11 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "zone is required" });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -200,7 +246,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/zones/create",
-      { zone: zone.trim(), type: "Primary" },
+      { zone: zone.trim(), type: "Primary", ...(node ? { node } : {}) },
       fetchImpl,
     );
     if (!result.ok) {
@@ -224,12 +270,18 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "ipAddress is required" });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
     }
     const params: Record<string, string> = { domain: domain.trim(), type, ipAddress: ipAddress.trim() };
+    if (node) params.node = node;
     if (typeof zone === "string" && zone.trim()) params.zone = zone.trim();
     if (typeof ttl === "number" && ttl > 0) params.ttl = String(ttl);
     const result = await callTechnitiumAction(config.base_url, config.token, "/zones/records/add", params, fetchImpl);
@@ -246,6 +298,11 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "zone is required" });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -255,7 +312,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/zones/delete",
-      { zone: zone.trim() },
+      { zone: zone.trim(), ...(node ? { node } : {}) },
       fetchImpl,
     );
     if (!result.ok) {
@@ -271,6 +328,11 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "partialToken is required" });
       return;
     }
+    const node = readNode(req.body);
+    if (node === null) {
+      res.status(400).json({ error: "node must be a plain host name" });
+      return;
+    }
     const config = requireConfig(db);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
@@ -280,7 +342,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       config.base_url,
       config.token,
       "/admin/sessions/delete",
-      { partialToken },
+      { partialToken, ...(node ? { node } : {}) },
       fetchImpl,
     );
     if (!result.ok) {

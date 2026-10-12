@@ -37,6 +37,91 @@ describe("actionRoutes", () => {
     expect(new Headers(calledInit?.headers).get("Authorization")).toBe("Bearer secret-token");
   });
 
+  // On a Technitium cluster each node keeps its own cache, so a flush can be
+  // aimed at one node. The call is still the same single hardcoded endpoint.
+  it("flushes the cache of one cluster node when a node is named", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    const res = await request(app).post("/api/actions/flush-cache").send({ node: "node2.cluster.test" });
+
+    expect(res.status).toBe(200);
+    const url = new URL(String(fetchImpl.mock.calls[0]![0]));
+    expect(url.pathname).toBe("/api/cache/flush");
+    expect(url.searchParams.get("node")).toBe("node2.cluster.test");
+  });
+
+  it("sends no node parameter when none is named", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+    const { app } = testApp(fetchImpl);
+
+    await request(app).post("/api/actions/flush-cache").send({});
+
+    expect(new URL(String(fetchImpl.mock.calls[0]![0])).searchParams.has("node")).toBe(false);
+  });
+
+  it("rejects a node that is not a plain host name, and does not call Technitium", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = testApp(fetchImpl);
+
+    for (const node of ["node2/../../x", "a b", "x&token=1", 5, ""]) {
+      const res = await request(app).post("/api/actions/flush-cache").send({ node });
+      expect(res.status).toBe(400);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  // Zones, host mappings and block-list settings are kept per node on a
+  // Technitium cluster, so these admin actions can be aimed at one node.
+  const NODE_ACTIONS: { name: string; method: "post" | "put"; path: string; body: Record<string, unknown>; technitium: string }[] = [
+    { name: "create a zone", method: "post", path: "/api/actions/create-zone", body: { zone: "home.lan" }, technitium: "/api/zones/create" },
+    {
+      name: "add a record",
+      method: "post",
+      path: "/api/actions/add-record",
+      body: { domain: "nas.home.lan", zone: "home.lan", type: "A", ipAddress: "10.0.0.5" },
+      technitium: "/api/zones/records/add",
+    },
+    { name: "delete a zone", method: "post", path: "/api/actions/delete-zone", body: { zone: "home.lan" }, technitium: "/api/zones/delete" },
+    { name: "force a block-list update", method: "post", path: "/api/actions/update-block-lists", body: {}, technitium: "/api/settings/forceUpdateBlockLists" },
+    { name: "save the block-list feeds", method: "put", path: "/api/actions/block-list-urls", body: { urls: ["https://example.com/a.txt"] }, technitium: "/api/settings/set" },
+    { name: "uninstall an app", method: "post", path: "/api/actions/uninstall-app", body: { name: "Block Page" }, technitium: "/api/apps/uninstall" },
+    { name: "revoke a session", method: "post", path: "/api/actions/revoke-session", body: { partialToken: "abcd1234" }, technitium: "/api/admin/sessions/delete" },
+  ];
+
+  for (const a of NODE_ACTIONS) {
+    it(`can ${a.name} on one named cluster node`, async () => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+      const { app } = testApp(fetchImpl);
+
+      const res = await request(app)[a.method](a.path).send({ ...a.body, node: "node2.cluster.test" });
+
+      expect(res.status).toBe(200);
+      const url = new URL(String(fetchImpl.mock.calls[0]![0]));
+      expect(url.pathname).toBe(a.technitium);
+      expect(url.searchParams.get("node")).toBe("node2.cluster.test");
+    });
+
+    it(`sends no node when ${a.name} is not aimed at one`, async () => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
+      const { app } = testApp(fetchImpl);
+
+      await request(app)[a.method](a.path).send(a.body);
+
+      expect(new URL(String(fetchImpl.mock.calls[0]![0])).searchParams.has("node")).toBe(false);
+    });
+
+    it(`refuses a node that is not a plain host name when asked to ${a.name}`, async () => {
+      const fetchImpl = vi.fn<typeof fetch>();
+      const { app } = testApp(fetchImpl);
+
+      const res = await request(app)[a.method](a.path).send({ ...a.body, node: "x&token=1" });
+
+      expect(res.status).toBe(400);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  }
+
   it("forces a block-list update by calling the exact Technitium endpoint", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: "ok" }));
     const { app } = testApp(fetchImpl);
