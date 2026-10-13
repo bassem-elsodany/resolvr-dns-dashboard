@@ -180,7 +180,7 @@ function navBadgeClass(to: string): string {
           <select
             id="server-switcher"
             :value="connection.activeServerId"
-            class="w-full rounded-md border border-border bg-background px-1.5 py-1 text-xs font-semibold text-fg focus:border-accent focus:outline-none"
+            class="w-full rounded-md border border-border bg-background-canvas px-1.5 py-1 text-xs font-semibold text-fg focus:border-accent focus:outline-none"
             @change="connection.selectServer(Number(($event.target as HTMLSelectElement).value))"
           >
             <option v-for="s in connection.servers" :key="s.id" :value="s.id">{{ serverLabel(s) }}</option>
