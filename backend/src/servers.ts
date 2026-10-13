@@ -14,13 +14,6 @@ export interface ServerConnection {
   token: string;
 }
 
-interface ServerRow {
-  id: number;
-  name: string;
-  base_url: string;
-  token: string;
-}
-
 export function getPrimary(db: Database): ServerConnection {
   const row = db.prepare("SELECT name, base_url, token FROM app_config WHERE id = 1").get() as {
     name: string;
@@ -32,12 +25,12 @@ export function getPrimary(db: Database): ServerConnection {
 
 export function getServer(db: Database, id: number): ServerConnection | null {
   if (id === 0) return getPrimary(db);
-  const row = db.prepare("SELECT id, name, base_url, token FROM servers WHERE id = ?").get(id) as ServerRow | undefined;
+  const row = db.prepare("SELECT id, name, base_url, token FROM servers WHERE id = ?").get(id) as ServerConnection | undefined;
   return row ?? null;
 }
 
 export function listExtraServers(db: Database): ServerConnection[] {
-  return db.prepare("SELECT id, name, base_url, token FROM servers ORDER BY id").all() as ServerRow[];
+  return db.prepare("SELECT id, name, base_url, token FROM servers ORDER BY id").all() as ServerConnection[];
 }
 
 // The id a request asks for: 0 when the header is absent, null when it is

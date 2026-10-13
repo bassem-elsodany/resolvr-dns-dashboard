@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Database } from "better-sqlite3";
-import { requireAdmin } from "../auth.js";
+import { requireAdmin, type AuthedRequest } from "../auth.js";
 import { pingTechnitium } from "../technitiumPing.js";
 import { listExtraServers, getPrimary, getServer } from "../servers.js";
 import { logger, clean } from "../logger.js";
@@ -44,12 +44,15 @@ export function serverRoutes(db: Database, options: ServerRoutesOptions = {}): R
     managed: id === 0 && managed,
   });
 
-  router.get("/", (_req, res) => {
+  // Viewers get the names, which is all the switcher needs; the addresses are
+  // internal details only admins see (as with /api/config).
+  router.get("/", (req, res) => {
+    const isAdmin = (req as AuthedRequest).user?.role === "admin";
     const primary = getPrimary(db);
     const servers: ServerView[] = [];
     if (primary.base_url && primary.token) servers.push(view(0, primary.name, primary.base_url));
     for (const s of listExtraServers(db)) servers.push(view(s.id, s.name, s.base_url));
-    res.json({ servers });
+    res.json({ servers: isAdmin ? servers : servers.map((s) => ({ ...s, baseUrl: "" })) });
   });
 
   function readConnection(body: unknown): { baseUrl: string; token: string } | null {
@@ -74,6 +77,23 @@ export function serverRoutes(db: Database, options: ServerRoutesOptions = {}): R
       return;
     }
     const result = await pingTechnitium(connection.baseUrl, connection.token, fetchImpl);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error ?? "Could not connect to the server" });
+      return;
+    }
+    res.json({ status: "ok", serverDomain: result.serverDomain, serverVersion: result.serverVersion });
+  });
+
+  // Checks a saved server with the URL and token it already has, so any row
+  // can be tested without typing the token again.
+  router.post("/:id/test", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const server = Number.isInteger(id) && id >= 0 ? getServer(db, id) : null;
+    if (!server || !server.base_url || !server.token) {
+      res.status(404).json({ error: "Unknown Technitium server." });
+      return;
+    }
+    const result = await pingTechnitium(server.base_url, server.token, fetchImpl);
     if (!result.ok) {
       res.status(400).json({ error: result.error ?? "Could not connect to the server" });
       return;

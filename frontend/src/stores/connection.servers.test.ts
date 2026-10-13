@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from "pinia"
 
 vi.mock("../api/app", async () => {
   const actual = await vi.importActual<typeof import("../api/app")>("../api/app")
-  return { ...actual, getStatus: vi.fn(), setServerConfig: vi.fn(), listServers: vi.fn() }
+  return { ...actual, getStatus: vi.fn(), listServers: vi.fn() }
 })
 
 import { listServers } from "../api/app"

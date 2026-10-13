@@ -23,10 +23,12 @@ vi.mock("../../api/app", async () => {
   return {
     ...actual,
     getStatus: vi.fn().mockResolvedValue({ configured: false, connected: false, serverDomain: null, serverVersion: null }),
+    listServers: vi.fn().mockResolvedValue({ servers: [] }),
   }
 })
 
-import { getStatus } from "../../api/app"
+import { getStatus, listServers } from "../../api/app"
+import { setActiveServerId } from "../../lib/activeServer"
 
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0))
@@ -53,7 +55,10 @@ function signInAsAdmin(): void {
 describe("AppShell", () => {
   beforeEach(() => {
     localStorage.clear()
+    setActiveServerId(0)
+    document.title = "Resolvr"
     setActivePinia(createPinia())
+    vi.mocked(listServers).mockReset().mockResolvedValue({ servers: [] })
     vi.mocked(getStatus)
       .mockReset()
       .mockResolvedValue({ configured: false, connected: false, serverDomain: null, serverVersion: null })
@@ -201,29 +206,45 @@ describe("AppShell", () => {
     expect(clientsLink.classes()).toContain("!bg-background-hover")
   })
 
-  it("shows 'Not connected' in the sidebar when the connection store is idle", async () => {
+  it("no longer has a connection card in the sidebar", async () => {
     signInAsAdmin()
     const router = makeRouter()
     const wrapper = mount(AppShell, { global: { plugins: [router] } })
     await router.isReady()
-
-    expect(wrapper.text()).toContain("Not connected")
-  })
-
-  it("shows the server domain and version when the connection store is connected", async () => {
-    signInAsAdmin()
-    const router = makeRouter()
-    const wrapper = mount(AppShell, { global: { plugins: [router] } })
-    await router.isReady()
-
     const connection = useConnectionStore()
     connection.status = "connected"
     connection.serverDomain = "dns.example.lan"
     connection.serverVersion = "15.4"
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain("dns.example.lan")
-    expect(wrapper.text()).toContain("v15.4")
+    const sidebar = wrapper.get("#app-sidebar").text()
+    expect(sidebar).not.toContain("Connected")
+    expect(sidebar).not.toContain("Not connected")
+    expect(sidebar).not.toContain("dns.example.lan")
+  })
+
+  it("shows the connection state as a dot in the top bar, with the details on hover", async () => {
+    signInAsAdmin()
+    const router = makeRouter()
+    const wrapper = mount(AppShell, { global: { plugins: [router] } })
+    await router.isReady()
+    const dot = wrapper.get("header #connection-dot")
+    expect(dot.attributes("title")).toBe("Not connected")
+    expect(dot.classes()).toContain("bg-gray-500")
+
+    const connection = useConnectionStore()
+    connection.status = "connected"
+    connection.serverDomain = "dns.example.lan"
+    connection.serverVersion = "15.4"
+    await wrapper.vm.$nextTick()
+    expect(dot.attributes("title")).toBe("Connected · dns.example.lan · v15.4")
+    expect(dot.classes()).toContain("bg-ok")
+
+    connection.status = "error"
+    connection.error = "Could not reach the server"
+    await wrapper.vm.$nextTick()
+    expect(dot.attributes("title")).toBe("Not connected · Could not reach the server")
+    expect(dot.classes()).toContain("bg-crit")
   })
 
   it("toggles the mobile sidebar open state when the nav toggle button is clicked", async () => {
@@ -243,7 +264,7 @@ describe("AppShell", () => {
   it("checks the admin-configured connection status on mount even when landing on a page other than /connect", async () => {
     // Regression test: the connection check used to only run from
     // ConnectView's own onMounted, so navigating straight to any other
-    // route left the sidebar stuck on "Not connected" forever —
+    // route left the status stuck on "Not connected" forever —
     // confirmed live with a real screenshot before this fix. AppShell
     // is the one component mounted on every route.
     signInAsAdmin()
@@ -261,8 +282,7 @@ describe("AppShell", () => {
     await flushPromises()
 
     expect(getStatus).toHaveBeenCalled()
-    expect(wrapper.text()).toContain("dns.example.lan")
-    expect(wrapper.text()).not.toContain("Not connected")
+    expect(wrapper.get("#connection-dot").attributes("title")).toContain("dns.example.lan")
   })
 
   it("shows the logged-in username and a logout control", async () => {
@@ -358,5 +378,49 @@ describe("AppShell", () => {
     await wrapper.vm.$nextTick()
 
     expect(clientsLinkFor().text()).toContain("2")
+  })
+  describe("server switcher", () => {
+    const SERVERS = [
+      { id: 0, name: "Segment 128", baseUrl: "http://a:5380", primary: true, configured: true },
+      { id: 2, name: "Segment 130", baseUrl: "http://b:5380", primary: false, configured: true },
+    ]
+
+    it("sits in the top bar, not the sidebar, when there is more than one server", async () => {
+      signInAsAdmin()
+      vi.mocked(listServers).mockResolvedValue({ servers: SERVERS })
+      const router = makeRouter()
+      const wrapper = mount(AppShell, { global: { plugins: [router] } })
+      await router.isReady()
+      await flushPromises()
+
+      const select = wrapper.get("header #server-switcher")
+      expect(wrapper.find("#app-sidebar #server-switcher").exists()).toBe(false)
+      expect(select.findAll("option").map((o) => o.text())).toEqual(["Segment 128", "Segment 130"])
+    })
+
+    it("is not shown for a single server", async () => {
+      signInAsAdmin()
+      vi.mocked(listServers).mockResolvedValue({ servers: [SERVERS[0]!] })
+      const router = makeRouter()
+      const wrapper = mount(AppShell, { global: { plugins: [router] } })
+      await router.isReady()
+      await flushPromises()
+
+      expect(wrapper.find("#server-switcher").exists()).toBe(false)
+      expect(document.title).toBe("Resolvr")
+    })
+
+    it("puts the selected server's name in the browser tab title", async () => {
+      signInAsAdmin()
+      setActiveServerId(2)
+      setActivePinia(createPinia())
+      vi.mocked(listServers).mockResolvedValue({ servers: SERVERS })
+      const router = makeRouter()
+      mount(AppShell, { global: { plugins: [router] } })
+      await router.isReady()
+      await flushPromises()
+
+      expect(document.title).toBe("Segment 130 · Resolvr")
+    })
   })
 })

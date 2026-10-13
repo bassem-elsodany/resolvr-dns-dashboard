@@ -264,4 +264,50 @@ describe("multiple servers", () => {
 
     expect((await viewer.post("/api/servers/test").send({ baseUrl: "http://x:5380", token: "t" })).status).toBe(403);
   });
+
+  it("tests a saved server with its own stored token, the first one included", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
+    await agent.post("/api/servers").send({ name: "Segment 129", baseUrl: "http://s129:5380", token: "t129" });
+    fetchImpl.mockClear();
+
+    const second = await agent.post("/api/servers/1/test");
+    const first = await agent.post("/api/servers/0/test");
+
+    expect(second.body).toMatchObject({ status: "ok", serverDomain: "dns.example.lan" });
+    expect(first.status).toBe(200);
+    const [secondCall, firstCall] = fetchImpl.mock.calls;
+    expect(String(secondCall![0])).toBe("http://s129:5380/api/user/session/get");
+    expect(new Headers(secondCall![1]?.headers).get("Authorization")).toBe("Bearer t129");
+    expect(String(firstCall![0])).toBe("http://primary:5380/api/user/session/get");
+  });
+
+  it("reports why a saved server failed its test, and 404s for one that is not there", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
+    await agent.post("/api/servers").send({ name: "Segment 129", baseUrl: "http://s129:5380", token: "t129" });
+    fetchImpl.mockImplementation(async () => jsonResponse({ status: "invalid-token", errorMessage: "Token expired" }));
+
+    const failed = await agent.post("/api/servers/1/test");
+
+    expect(failed.status).toBe(400);
+    expect(failed.body.error).toContain("Token expired");
+    expect((await agent.post("/api/servers/99/test")).status).toBe(404);
+  });
+
+  it("does not send a viewer the servers' addresses, only their names", async () => {
+    const { app, agent } = await setup(vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING)));
+    await agent.post("/api/servers").send({ name: "Segment 129", baseUrl: "http://s129:5380", token: "t129" });
+    await agent.post("/api/users").send({ username: "viewer1", password: "viewer-password-123", role: "viewer" });
+    const viewer = request.agent(app);
+    await viewer.post("/api/auth/login").send({ username: "viewer1", password: "viewer-password-123" });
+
+    const res = await viewer.get("/api/servers");
+
+    expect(res.body.servers.map((s: { id: number; name: string; baseUrl: string }) => [s.id, s.name, s.baseUrl])).toEqual([
+      [0, "", ""],
+      [1, "Segment 129", ""],
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain("5380");
+  });
 });

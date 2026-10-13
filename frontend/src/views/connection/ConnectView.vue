@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue"
 import { useConnectionStore } from "../../stores/connection"
-import { addServer, removeServer, updateServer, testServer, AppApiError } from "../../api/app"
+import { addServer, removeServer, updateServer, testServer, testSavedServer, AppApiError } from "../../api/app"
 
 const connection = useConnectionStore()
 
@@ -59,6 +59,23 @@ async function onRemoveServer(id: number) {
     else void connection.testConnection()
   } catch (err) {
     serverError.value = messageOf(err, "Could not remove the server.")
+  }
+}
+
+// The outcome of testing each listed server, by id: shown on its row.
+const rowTests = ref<Record<number, { busy: boolean; ok?: boolean; text?: string }>>({})
+
+async function onTestSaved(id: number) {
+  rowTests.value[id] = { busy: true }
+  try {
+    const res = await testSavedServer(id)
+    rowTests.value[id] = {
+      busy: false,
+      ok: true,
+      text: `Works · ${res.serverDomain ?? "server"}${res.serverVersion ? ` · v${res.serverVersion}` : ""}`,
+    }
+  } catch (err) {
+    rowTests.value[id] = { busy: false, ok: false, text: messageOf(err, "Could not test the server.") }
   }
 }
 
@@ -130,16 +147,35 @@ async function onAddServer() {
           <div v-if="s.managed" class="mt-0.5 text-xs text-gray-500">
             Set in the add-on's Configuration tab in Home Assistant.
           </div>
+          <div
+            v-if="rowTests[s.id]?.text"
+            :id="`server-test-result-${s.id}`"
+            class="mt-1 text-xs font-semibold"
+            :class="rowTests[s.id]?.ok ? 'text-ok' : 'text-crit'"
+          >
+            {{ rowTests[s.id]?.text }}
+          </div>
         </div>
-        <button
-          v-if="!s.managed"
-          type="button"
-          class="flex-none text-xs font-semibold text-crit"
-          :aria-label="`Remove ${s.name || s.baseUrl}`"
-          @click="onRemoveServer(s.id)"
-        >
-          Remove
-        </button>
+        <div class="flex flex-none items-center gap-3">
+          <button
+            type="button"
+            :disabled="rowTests[s.id]?.busy"
+            class="text-xs font-semibold text-accent disabled:opacity-50"
+            :aria-label="`Test ${s.name || s.baseUrl}`"
+            @click="onTestSaved(s.id)"
+          >
+            {{ rowTests[s.id]?.busy ? "Testing…" : "Test" }}
+          </button>
+          <button
+            v-if="!s.managed"
+            type="button"
+            class="text-xs font-semibold text-crit"
+            :aria-label="`Remove ${s.name || s.baseUrl}`"
+            @click="onRemoveServer(s.id)"
+          >
+            Remove
+          </button>
+        </div>
       </li>
     </ul>
     <p v-else id="no-servers" class="mt-8 rounded-lg border border-border bg-background-card px-3 py-3 text-sm text-gray-500">

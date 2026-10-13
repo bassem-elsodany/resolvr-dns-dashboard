@@ -78,17 +78,6 @@ export function getStatus(): Promise<ServerStatus> {
   return call("/api/status")
 }
 
-export function getServerConfig(): Promise<{ baseUrl: string; token: string; managed?: boolean }> {
-  return call("/api/config")
-}
-
-export function setServerConfig(
-  baseUrl: string,
-  token: string,
-): Promise<{ status: string; serverDomain: string; serverVersion: string; clusterInitialized?: boolean }> {
-  return call("/api/config", { method: "PUT", body: JSON.stringify({ baseUrl, token }) })
-}
-
 // A Technitium server Resolvr observes; the token never reaches the browser.
 // id 0 is the first connection, kept under that id for older clients.
 export interface ObservedServer {
@@ -114,6 +103,11 @@ export function addServer(name: string, baseUrl: string, token: string): Promise
 // backend checks them against Technitium first).
 export function updateServer(id: number, name: string, connection?: { baseUrl: string; token: string }): Promise<ObservedServer> {
   return call(`/api/servers/${id}`, { method: "PUT", body: JSON.stringify({ name, ...connection }) })
+}
+
+// Checks a saved server with the URL and token the backend already holds.
+export function testSavedServer(id: number): Promise<{ status: string; serverDomain?: string; serverVersion?: string }> {
+  return call(`/api/servers/${id}/test`, { method: "POST" })
 }
 
 // Checks a URL and token without saving them.

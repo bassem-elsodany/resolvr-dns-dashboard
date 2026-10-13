@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import { getStatus, setServerConfig, listServers, AppApiError, type ObservedServer } from "../api/app"
+import { getStatus, listServers, AppApiError, type ObservedServer } from "../api/app"
 import { getActiveServerId, setActiveServerId } from "../lib/activeServer"
 import type { TechnitiumCredentials } from "../api/technitium"
 
@@ -82,33 +82,6 @@ export const useConnectionStore = defineStore("connection", () => {
     window.location.reload()
   }
 
-  // Admin-only: validates the given server details against the real
-  // Technitium server (backend does the actual check) and, only if
-  // that succeeds, persists them for every user of this dashboard.
-  async function setConfig(newBaseUrl: string, newToken: string): Promise<void> {
-    status.value = "testing"
-    error.value = null
-    try {
-      const res = await setServerConfig(newBaseUrl, newToken)
-      baseUrl.value = newBaseUrl
-      token.value = newToken
-      // The form edits the primary connection; the status panel shows the
-      // server being observed, which may be another one.
-      if (activeServerId.value === 0) {
-        isConfigured.value = true
-        status.value = "connected"
-        serverDomain.value = res.serverDomain
-        serverVersion.value = res.serverVersion
-        clusterInitialized.value = res.clusterInitialized === true
-      } else {
-        status.value = "idle"
-      }
-    } catch (err) {
-      status.value = "error"
-      error.value = err instanceof AppApiError ? err.message : "Could not connect to the server."
-    }
-  }
-
   function reset(): void {
     baseUrl.value = ""
     token.value = ""
@@ -134,7 +107,6 @@ export const useConnectionStore = defineStore("connection", () => {
     activeServerId,
     loadServers,
     selectServer,
-    setConfig,
     testConnection,
     reset,
   }

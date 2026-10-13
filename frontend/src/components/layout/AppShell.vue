@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 const appVersion = __APP_VERSION__
-import { ref, watch, onMounted } from "vue"
+import { ref, computed, watch, onMounted } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { useConnectionStore } from "../../stores/connection"
 import { useThemeStore } from "../../stores/theme"
@@ -66,12 +66,31 @@ onMounted(() => {
 })
 
 // What the switcher shows for a server: the name it was given, else the name
-// Technitium reports for the one being observed, else its address.
+// Technitium reports for the one being observed, else its address (which only
+// admins are sent).
 function serverLabel(s: { id: number; name: string; baseUrl: string }): string {
   if (s.name) return s.name
   if (s.id === connection.activeServerId && connection.serverDomain) return connection.serverDomain
-  return s.baseUrl
+  return s.baseUrl || "Server"
 }
+
+// What the status dot in the top bar says on hover.
+const connectionTitle = computed(() => {
+  if (connection.status === "connected") {
+    return `Connected · ${connection.serverDomain ?? ""}${connection.serverVersion ? ` · v${connection.serverVersion}` : ""}`
+  }
+  if (connection.status === "error") return `Not connected${connection.error ? ` · ${connection.error}` : ""}`
+  return "Not connected"
+})
+
+// The browser tab names the server being looked at, so several tabs (one per
+// segment) can be told apart. A single-server install keeps the plain title.
+const tabTitle = computed(() => {
+  if (connection.servers.length < 2) return "Resolvr"
+  const active = connection.servers.find((s) => s.id === connection.activeServerId)
+  return active ? `${serverLabel(active)} · Resolvr` : "Resolvr"
+})
+watch(tabTitle, (title) => { document.title = title }, { immediate: true })
 
 // Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
 // Zones, Apps, Server Info). Returns null to hide the badge — e.g. no
@@ -172,35 +191,6 @@ function navBadgeClass(to: string): string {
       </nav>
 
       <div class="mt-auto flex flex-col gap-2">
-        <div
-          v-if="connection.servers.length > 1"
-          class="flex flex-col gap-1 rounded-lg border border-border bg-background-card px-2.5 py-2"
-        >
-          <label for="server-switcher" class="text-[10.5px] font-bold uppercase tracking-wide text-gray-500">Server</label>
-          <select
-            id="server-switcher"
-            :value="connection.activeServerId"
-            class="w-full rounded-md border border-border bg-background-canvas px-1.5 py-1 text-xs font-semibold text-fg focus:border-accent focus:outline-none"
-            @change="connection.selectServer(Number(($event.target as HTMLSelectElement).value))"
-          >
-            <option v-for="s in connection.servers" :key="s.id" :value="s.id">{{ serverLabel(s) }}</option>
-          </select>
-        </div>
-        <div class="flex flex-col gap-1 rounded-lg border border-border bg-background-card px-2.5 py-2">
-          <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <span
-              class="h-1.5 w-1.5 flex-none rounded-full"
-              :class="connection.status === 'connected' ? 'bg-ok' : 'bg-gray-500'"
-            />
-            {{ connection.status === "connected" ? "Connected" : "Not connected" }}
-          </div>
-          <div v-if="connection.status === 'connected'" class="text-xs font-semibold">
-            {{ connection.serverDomain }}
-          </div>
-          <div v-if="connection.status === 'connected'" class="font-mono text-[10.5px] text-gray-500">
-            v{{ connection.serverVersion }}
-          </div>
-        </div>
         <router-link
           v-if="auth.isAdmin"
           to="/connect"
@@ -240,6 +230,31 @@ function navBadgeClass(to: string): string {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
+
+        <!-- Which server every page below is showing; the switcher is only worth showing when there is a choice. -->
+        <div id="topbar-server" class="flex min-w-0 items-center gap-2">
+          <span
+            id="connection-dot"
+            role="img"
+            :aria-label="connectionTitle"
+            :title="connectionTitle"
+            class="h-2 w-2 flex-none rounded-full"
+            :class="connection.status === 'connected' ? 'bg-ok' : connection.status === 'error' ? 'bg-crit' : 'bg-gray-500'"
+          />
+          <label v-if="connection.servers.length > 1" for="server-switcher" class="hidden text-[10.5px] font-bold uppercase tracking-wide text-gray-500 sm:block">
+            Server
+          </label>
+          <select
+            v-if="connection.servers.length > 1"
+            id="server-switcher"
+            :value="connection.activeServerId"
+            title="Server shown on every page"
+            class="min-w-0 max-w-[16rem] truncate rounded-lg border border-border-hover bg-background-card px-2.5 py-1.5 text-[12.5px] font-semibold text-fg focus:border-accent focus:outline-none"
+            @change="connection.selectServer(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="s in connection.servers" :key="s.id" :value="s.id">{{ serverLabel(s) }}</option>
+          </select>
+        </div>
 
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <div id="topbar-range-seg" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background-hover p-0.5">

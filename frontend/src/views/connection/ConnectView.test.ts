@@ -12,10 +12,11 @@ vi.mock("../../api/app", async () => {
     removeServer: vi.fn(),
     updateServer: vi.fn(),
     testServer: vi.fn(),
+    testSavedServer: vi.fn(),
   }
 })
 
-import { listServers, addServer, removeServer, updateServer, testServer, AppApiError } from "../../api/app"
+import { listServers, addServer, removeServer, updateServer, testServer, testSavedServer, AppApiError } from "../../api/app"
 import { useConnectionStore } from "../../stores/connection"
 import { setActiveServerId } from "../../lib/activeServer"
 import ConnectView from "./ConnectView.vue"
@@ -35,7 +36,7 @@ describe("ConnectView", () => {
     localStorage.clear()
     setActiveServerId(0)
     setActivePinia(createPinia())
-    for (const fn of [addServer, removeServer, updateServer, testServer, listServers]) vi.mocked(fn).mockReset()
+    for (const fn of [addServer, removeServer, updateServer, testServer, testSavedServer, listServers]) vi.mocked(fn).mockReset()
     vi.mocked(listServers).mockResolvedValue({ servers: [FIRST, SECOND] })
   })
 
@@ -81,7 +82,7 @@ describe("ConnectView", () => {
     vi.mocked(removeServer).mockResolvedValue({ status: "ok" })
     const wrapper = await mountView()
 
-    await wrapper.findAll("#server-list li")[1]!.find("button").trigger("click")
+    await wrapper.findAll("#server-list li")[1]!.findAll("button").find((b) => b.text() === "Remove")!.trigger("click")
     await flushPromises()
 
     expect(removeServer).toHaveBeenCalledWith(2)
@@ -91,7 +92,7 @@ describe("ConnectView", () => {
     vi.mocked(removeServer).mockResolvedValue({ status: "ok" })
     const wrapper = await mountView()
 
-    await wrapper.findAll("#server-list li")[0]!.find("button").trigger("click")
+    await wrapper.findAll("#server-list li")[0]!.findAll("button").find((b) => b.text() === "Remove")!.trigger("click")
     await flushPromises()
 
     expect(removeServer).toHaveBeenCalledWith(0)
@@ -104,6 +105,37 @@ describe("ConnectView", () => {
     const row = wrapper.find("#server-list li")
     expect(row.text()).not.toContain("Remove")
     expect(row.text()).toContain("Configuration tab")
+  })
+
+  it("has a Test button on every listed server, the managed one included", async () => {
+    vi.mocked(listServers).mockResolvedValue({ servers: [{ ...FIRST, managed: true }, SECOND] })
+    const wrapper = await mountView()
+
+    for (const row of wrapper.findAll("#server-list li")) {
+      expect(row.findAll("button").some((b) => b.text() === "Test")).toBe(true)
+    }
+  })
+
+  it("tests a listed server and shows the result on its row", async () => {
+    vi.mocked(testSavedServer).mockResolvedValue({ status: "ok", serverDomain: "b.lan", serverVersion: "15.6" })
+    const wrapper = await mountView()
+
+    await wrapper.findAll("#server-list li")[1]!.findAll("button").find((b) => b.text() === "Test")!.trigger("click")
+    await flushPromises()
+
+    expect(testSavedServer).toHaveBeenCalledWith(2)
+    expect(wrapper.find("#server-test-result-2").text()).toContain("b.lan")
+    expect(wrapper.find("#server-test-result-0").exists()).toBe(false)
+  })
+
+  it("shows why a listed server failed its test", async () => {
+    vi.mocked(testSavedServer).mockRejectedValue(new AppApiError("Token expired", 400))
+    const wrapper = await mountView()
+
+    await wrapper.findAll("#server-list li")[0]!.findAll("button").find((b) => b.text() === "Test")!.trigger("click")
+    await flushPromises()
+
+    expect(wrapper.find("#server-test-result-0").text()).toBe("Token expired")
   })
 
   it("asks for a first server when there are none", async () => {

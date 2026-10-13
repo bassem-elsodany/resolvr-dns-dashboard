@@ -3,17 +3,16 @@ import { createPinia, setActivePinia } from "pinia"
 
 vi.mock("../api/app", async () => {
   const actual = await vi.importActual<typeof import("../api/app")>("../api/app")
-  return { ...actual, getStatus: vi.fn(), setServerConfig: vi.fn() }
+  return { ...actual, getStatus: vi.fn() }
 })
 
-import { getStatus, setServerConfig, AppApiError } from "../api/app"
+import { getStatus } from "../api/app"
 import { useConnectionStore } from "./connection"
 
 describe("connection store", () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(getStatus).mockReset()
-    vi.mocked(setServerConfig).mockReset()
   })
 
   it("starts unconfigured before the backend status has been checked", () => {
@@ -79,33 +78,6 @@ describe("connection store", () => {
     await store.testConnection()
 
     expect(store.status).toBe("idle")
-    expect(store.isConfigured).toBe(false)
-  })
-
-  it("saves new connection details via the backend, which validates before persisting", async () => {
-    vi.mocked(setServerConfig).mockResolvedValue({
-      status: "ok",
-      serverDomain: "dns.example.lan",
-      serverVersion: "15.4",
-    })
-    const store = useConnectionStore()
-
-    await store.setConfig("http://192.168.1.53:5380", "secret-token")
-
-    expect(setServerConfig).toHaveBeenCalledWith("http://192.168.1.53:5380", "secret-token")
-    expect(store.isConfigured).toBe(true)
-    expect(store.status).toBe("connected")
-    expect(store.serverDomain).toBe("dns.example.lan")
-  })
-
-  it("shows a readable error, not a raw stack trace, when saving invalid connection details fails", async () => {
-    vi.mocked(setServerConfig).mockRejectedValue(new AppApiError("Invalid token or session expired.", 400))
-    const store = useConnectionStore()
-
-    await store.setConfig("http://192.168.1.53:5380", "wrong-token")
-
-    expect(store.status).toBe("error")
-    expect(store.error).toBe("Invalid token or session expired.")
     expect(store.isConfigured).toBe(false)
   })
 })
