@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { useConnectionStore } from "../../stores/connection"
-import { getServerConfig } from "../../api/app"
+import { getServerConfig, addServer, removeServer, AppApiError } from "../../api/app"
 
 const connection = useConnectionStore()
 const baseUrlInput = ref("")
@@ -24,6 +24,42 @@ onMounted(async () => {
     // blank rather than blocking the page on it.
   }
 })
+
+// Further servers to observe next to the primary connection above. Each is
+// checked against Technitium before it is saved, and appears in the sidebar's
+// server switcher for everyone who signs in.
+const newName = ref("")
+const newUrl = ref("")
+const newToken = ref("")
+const serverError = ref<string | null>(null)
+const addingServer = ref(false)
+const extraServers = computed(() => connection.servers.filter((s) => !s.primary))
+
+async function onAddServer() {
+  serverError.value = null
+  addingServer.value = true
+  try {
+    await addServer(newName.value, newUrl.value, newToken.value)
+    newName.value = ""
+    newUrl.value = ""
+    newToken.value = ""
+    await connection.loadServers()
+  } catch (err) {
+    serverError.value = err instanceof AppApiError ? err.message : "Could not add the server."
+  } finally {
+    addingServer.value = false
+  }
+}
+
+async function onRemoveServer(id: number) {
+  serverError.value = null
+  try {
+    await removeServer(id)
+    await connection.loadServers()
+  } catch (err) {
+    serverError.value = err instanceof AppApiError ? err.message : "Could not remove the server."
+  }
+}
 
 async function onTestConnection() {
   await connection.setConfig(baseUrlInput.value, tokenInput.value)
@@ -100,6 +136,70 @@ async function onTestConnection() {
         {{ connection.error }}
       </p>
     </form>
+
+    <section id="more-servers" class="mt-12 border-t border-border pt-8">
+      <h2 class="text-lg font-semibold tracking-tight">More servers</h2>
+      <p class="mt-1 text-sm text-gray-500">
+        Observe other Technitium servers from this same dashboard &mdash; for example separate instances
+        that are not in one cluster. Pick the one to look at with the switcher in the sidebar.
+      </p>
+
+      <ul v-if="extraServers.length" class="mt-4 flex flex-col gap-2">
+        <li
+          v-for="s in extraServers"
+          :key="s.id"
+          class="flex items-center justify-between gap-3 rounded-lg border border-border bg-background-card px-3 py-2 text-sm"
+        >
+          <div class="min-w-0">
+            <div class="truncate font-semibold">{{ s.name }}</div>
+            <div class="truncate font-mono text-xs text-gray-500">{{ s.baseUrl }}</div>
+          </div>
+          <button
+            type="button"
+            class="flex-none text-xs font-semibold text-crit"
+            :aria-label="`Remove ${s.name}`"
+            @click="onRemoveServer(s.id)"
+          >
+            Remove
+          </button>
+        </li>
+      </ul>
+
+      <form class="mt-4 flex flex-col gap-3" @submit.prevent="onAddServer">
+        <input
+          id="new-server-name"
+          v-model="newName"
+          type="text"
+          placeholder="Name, e.g. Segment 129"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <input
+          id="new-server-url"
+          v-model="newUrl"
+          type="text"
+          placeholder="http://192.168.1.54:5380"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <input
+          id="new-server-token"
+          v-model="newToken"
+          type="password"
+          placeholder="API token"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <div>
+          <button
+            id="add-server"
+            type="submit"
+            :disabled="addingServer"
+            class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {{ addingServer ? "Checking…" : "Add server" }}
+          </button>
+        </div>
+        <p v-if="serverError" id="server-error" class="text-sm text-crit">{{ serverError }}</p>
+      </form>
+    </section>
 
     <div class="mt-8 max-w-[62ch] text-xs leading-relaxed text-gray-500">
       <p>

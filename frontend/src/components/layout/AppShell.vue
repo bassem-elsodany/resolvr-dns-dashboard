@@ -61,8 +61,17 @@ watch(
 // local flag to check first the way a synchronously-loaded
 // localStorage value used to allow.
 onMounted(() => {
+  void connection.loadServers()
   void connection.testConnection()
 })
+
+// What the switcher shows for a server: the name it was given, or for the
+// primary connection the name Technitium reports (else "Primary").
+function serverLabel(s: { id: number; name: string; primary: boolean; baseUrl: string }): string {
+  if (s.name) return s.name
+  if (s.primary && s.id === connection.activeServerId && connection.serverDomain) return connection.serverDomain
+  return s.primary ? "Primary" : s.baseUrl
+}
 
 // Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
 // Zones, Apps, Server Info). Returns null to hide the badge — e.g. no
@@ -163,6 +172,20 @@ function navBadgeClass(to: string): string {
       </nav>
 
       <div class="mt-auto flex flex-col gap-2">
+        <div
+          v-if="connection.servers.length > 1"
+          class="flex flex-col gap-1 rounded-lg border border-border bg-background-card px-2.5 py-2"
+        >
+          <label for="server-switcher" class="text-[10.5px] font-bold uppercase tracking-wide text-gray-500">Server</label>
+          <select
+            id="server-switcher"
+            :value="connection.activeServerId"
+            class="w-full rounded-md border border-border bg-background px-1.5 py-1 text-xs font-semibold text-fg focus:border-accent focus:outline-none"
+            @change="connection.selectServer(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="s in connection.servers" :key="s.id" :value="s.id">{{ serverLabel(s) }}</option>
+          </select>
+        </div>
         <div class="flex flex-col gap-1 rounded-lg border border-border bg-background-card px-2.5 py-2">
           <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
             <span

@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Database } from "better-sqlite3";
 import { callTechnitiumAction } from "../technitiumAction.js";
 import { logger, clean } from "../logger.js";
 import type { AppConfigRow } from "../db.js";
+import { serverForRequest } from "../servers.js";
 
 // A cluster node's domain name: letters, digits, dots and hyphens only, so a
 // caller can never inject another parameter or path through it.
@@ -21,9 +22,11 @@ export interface ActionRoutesOptions {
   fetchImpl?: typeof fetch;
 }
 
-function requireConfig(db: Database): AppConfigRow | null {
-  const config = db.prepare("SELECT base_url, token FROM app_config WHERE id = 1").get() as AppConfigRow;
-  return config.base_url && config.token ? config : null;
+// The server this request is about (see SERVER_HEADER), or null when it is
+// unknown or has no URL and token yet.
+function requireConfig(db: Database, req: Request): AppConfigRow | null {
+  const config = serverForRequest(db, req);
+  return config && config.base_url && config.token ? config : null;
 }
 
 // Admin-only mutating actions — the one deliberate exception to this
@@ -56,7 +59,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -81,7 +84,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -124,7 +127,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -155,7 +158,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "domain is required" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -180,7 +183,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "domain is required" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -214,7 +217,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -251,7 +254,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -289,7 +292,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -317,7 +320,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;
@@ -347,7 +350,7 @@ export function actionRoutes(db: Database, options: ActionRoutesOptions = {}): R
       res.status(400).json({ error: "node must be a plain host name" });
       return;
     }
-    const config = requireConfig(db);
+    const config = requireConfig(db, req);
     if (!config) {
       res.status(400).json({ error: "No Technitium server is configured yet." });
       return;

@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS app_config (
   token TEXT NOT NULL DEFAULT ''
 );
 INSERT OR IGNORE INTO app_config (id, base_url, token) VALUES (1, '', '');
+
+-- Further Technitium servers to observe next to the primary connection above
+-- (app_config). Each is monitored on its own; they need not form a cluster.
+CREATE TABLE IF NOT EXISTS servers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  token TEXT NOT NULL
+);
 `;
 
 export interface OpenDbOptions {

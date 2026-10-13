@@ -3,6 +3,7 @@
 // are entirely separate from the Technitium proxy in technitium.ts:
 // nothing here ever talks to the DNS server directly.
 import { resolveBackendUrl } from "../lib/backendUrl"
+import { serverHeaders } from "../lib/activeServer"
 
 const BACKEND_URL = resolveBackendUrl()
 
@@ -21,8 +22,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     res = await fetch(`${BACKEND_URL}${path}`, {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: { "Content-Type": "application/json", ...serverHeaders(), ...(init.headers as Record<string, string> | undefined) },
     })
   } catch (err) {
     throw new AppApiError(`Could not reach the backend: ${(err as Error).message}`, 0)
@@ -86,6 +87,33 @@ export function setServerConfig(
   token: string,
 ): Promise<{ status: string; serverDomain: string; serverVersion: string; clusterInitialized?: boolean }> {
   return call("/api/config", { method: "PUT", body: JSON.stringify({ baseUrl, token }) })
+}
+
+// A Technitium server Resolvr observes. id 0 is the primary connection
+// (edited on the form above); the rest are added here and never carry a
+// token to the browser.
+export interface ObservedServer {
+  id: number
+  name: string
+  baseUrl: string
+  primary: boolean
+  configured: boolean
+}
+
+export function listServers(): Promise<{ servers: ObservedServer[] }> {
+  return call("/api/servers")
+}
+
+export function addServer(name: string, baseUrl: string, token: string): Promise<ObservedServer> {
+  return call("/api/servers", { method: "POST", body: JSON.stringify({ name, baseUrl, token }) })
+}
+
+export function updateServer(id: number, name: string, baseUrl: string, token: string): Promise<ObservedServer> {
+  return call(`/api/servers/${id}`, { method: "PUT", body: JSON.stringify({ name, baseUrl, token }) })
+}
+
+export function removeServer(id: number): Promise<{ status: string }> {
+  return call(`/api/servers/${id}`, { method: "DELETE" })
 }
 
 export function listUsers(): Promise<{ users: AppUser[] }> {

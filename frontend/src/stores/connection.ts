@@ -1,6 +1,7 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
-import { getStatus, setServerConfig, AppApiError } from "../api/app"
+import { getStatus, setServerConfig, listServers, AppApiError, type ObservedServer } from "../api/app"
+import { getActiveServerId, setActiveServerId } from "../lib/activeServer"
 import type { TechnitiumCredentials } from "../api/technitium"
 
 export type ConnectionStatus = "idle" | "testing" | "connected" | "error"
@@ -21,6 +22,10 @@ export const useConnectionStore = defineStore("connection", () => {
   const isConfigured = ref(false)
   // Part of a Technitium cluster — the dashboard can then show cluster-wide stats.
   const clusterInitialized = ref(false)
+  // Every server this dashboard can observe, and which one this browser is
+  // looking at (0 is the primary connection).
+  const servers = ref<ObservedServer[]>([])
+  const activeServerId = ref(getActiveServerId())
 
   // No longer actually sent anywhere (see api/technitium.ts) — kept so
   // the ~30 view files that pass `connection.credentials` into API
@@ -52,6 +57,31 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
+  async function loadServers(): Promise<void> {
+    try {
+      servers.value = (await listServers()).servers
+      // A server that was removed since this browser chose it: fall back to
+      // the primary rather than showing errors for something that is gone.
+      if (!servers.value.some((s) => s.id === activeServerId.value)) {
+        activeServerId.value = 0
+        setActiveServerId(0)
+      }
+    } catch {
+      // Older backend without /api/servers, or not signed in yet: a single
+      // server, which is what the dashboard did before.
+      servers.value = []
+    }
+  }
+
+  // Everything on screen (stats scope, charts, lists) belongs to one server,
+  // so switching starts the app afresh on the chosen one.
+  function selectServer(id: number): void {
+    if (id === activeServerId.value) return
+    setActiveServerId(id)
+    activeServerId.value = id
+    window.location.reload()
+  }
+
   // Admin-only: validates the given server details against the real
   // Technitium server (backend does the actual check) and, only if
   // that succeeds, persists them for every user of this dashboard.
@@ -62,11 +92,17 @@ export const useConnectionStore = defineStore("connection", () => {
       const res = await setServerConfig(newBaseUrl, newToken)
       baseUrl.value = newBaseUrl
       token.value = newToken
-      isConfigured.value = true
-      status.value = "connected"
-      serverDomain.value = res.serverDomain
-      serverVersion.value = res.serverVersion
-      clusterInitialized.value = res.clusterInitialized === true
+      // The form edits the primary connection; the status panel shows the
+      // server being observed, which may be another one.
+      if (activeServerId.value === 0) {
+        isConfigured.value = true
+        status.value = "connected"
+        serverDomain.value = res.serverDomain
+        serverVersion.value = res.serverVersion
+        clusterInitialized.value = res.clusterInitialized === true
+      } else {
+        status.value = "idle"
+      }
     } catch (err) {
       status.value = "error"
       error.value = err instanceof AppApiError ? err.message : "Could not connect to the server."
@@ -94,6 +130,10 @@ export const useConnectionStore = defineStore("connection", () => {
     isConfigured,
     clusterInitialized,
     credentials,
+    servers,
+    activeServerId,
+    loadServers,
+    selectServer,
     setConfig,
     testConnection,
     reset,

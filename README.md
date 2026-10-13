@@ -64,6 +64,12 @@ When the server you connect to is part of a cluster, each panel gets a scope chi
 
 The screenshots use made-up data: private-range IPs, generic device names, `example.*` domains, and a two-node cluster called `dns1.example.lan` and `dns2.example.lan`.
 
+### Several separate servers
+
+Servers that are *not* joined in a Technitium cluster can be observed from the same dashboard. As an admin, open **Connection Settings > More servers** and add each one with a name, its URL and an API token. Each is checked against Technitium before it is saved. Once there is more than one, a **Server** switcher appears in the sidebar; picking one reloads the dashboard on that server, and every page, chart and admin action then applies to it. The choice is remembered per browser.
+
+The connection above the list stays the primary one (it is also what the Home Assistant add-on configures), and a single-server install looks and behaves exactly as before. Servers are viewed one at a time: nothing is merged across servers that are not in a cluster.
+
 ## Architecture
 
 Two small services:

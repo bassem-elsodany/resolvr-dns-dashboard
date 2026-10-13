@@ -3,6 +3,7 @@ import type { Database } from "better-sqlite3";
 import { pingTechnitium } from "../technitiumPing.js";
 import type { AppConfigRow } from "../db.js";
 import { logger, clean } from "../logger.js";
+import { serverForRequest, getPrimary } from "../servers.js";
 
 export interface ConfigRoutesOptions {
   fetchImpl?: typeof fetch;
@@ -12,7 +13,7 @@ export interface ConfigRoutesOptions {
 }
 
 function getConfig(db: Database): AppConfigRow {
-  return db.prepare("SELECT base_url, token FROM app_config WHERE id = 1").get() as AppConfigRow;
+  return getPrimary(db);
 }
 
 // Mounted twice: once under /api/status (any authenticated role) and
@@ -20,8 +21,12 @@ function getConfig(db: Database): AppConfigRow {
 // router factory so both share the exact same read logic.
 export function statusRoute(db: Database, options: ConfigRoutesOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  return async (_req: unknown, res: import("express").Response) => {
-    const config = getConfig(db);
+  return async (req: import("express").Request, res: import("express").Response) => {
+    const config = serverForRequest(db, req);
+    if (!config) {
+      res.status(404).json({ error: "Unknown Technitium server." });
+      return;
+    }
     if (!config.base_url || !config.token) {
       res.json({ configured: false, connected: false, serverDomain: null, serverVersion: null });
       return;

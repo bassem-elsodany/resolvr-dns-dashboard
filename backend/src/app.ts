@@ -2,7 +2,9 @@ import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { isAllowedPath } from "./proxyAllowlist.js";
-import { openDb, type AppConfigRow } from "./db.js";
+import { openDb } from "./db.js";
+import { serverForRequest } from "./servers.js";
+import { serverRoutes } from "./routes/serverRoutes.js";
 import { attachUser, requireAuth, requireAdmin } from "./auth.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
@@ -81,10 +83,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
   }
   app.use("/api/config", requireAdmin, configRoutes(db, { fetchImpl, managed: options.addon?.managed ?? false }));
   app.get("/api/status", requireAuth, statusRoute(db, { fetchImpl }));
+  app.use("/api/servers", requireAuth, serverRoutes(db, { fetchImpl }));
   app.use("/api/actions", requireAdmin, actionRoutes(db, { fetchImpl }));
 
   app.all("/api/technitium/*splat", requireAuth, async (req: Request, res: Response) => {
-    const config = db.prepare("SELECT base_url, token FROM app_config WHERE id = 1").get() as AppConfigRow;
+    const config = serverForRequest(db, req);
+    if (!config) {
+      res.status(404).json({ error: "Unknown Technitium server." });
+      return;
+    }
     const baseUrl = config.base_url;
     const token = config.token;
 

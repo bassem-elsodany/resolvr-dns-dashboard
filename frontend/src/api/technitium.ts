@@ -8,6 +8,7 @@
 
 import { ENDPOINTS } from "./endpoints"
 import { resolveBackendUrl } from "../lib/backendUrl"
+import { serverHeaders } from "../lib/activeServer"
 
 export interface TechnitiumCredentials {
   baseUrl: string
@@ -43,7 +44,7 @@ async function technitiumGet<T>(
     // all this call needs to prove is who's asking, via the session
     // cookie. `credentials` (the parameter) is kept only so existing call
     // sites don't all need to change; it's no longer sent anywhere.
-    res = await fetch(url, { credentials: "include" })
+    res = await fetch(url, { credentials: "include", headers: serverHeaders() })
   } catch (err) {
     throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
   }
@@ -559,7 +560,7 @@ async function technitiumGetBlob(
 
   let res: Response
   try {
-    res = await fetch(url, { credentials: "include" })
+    res = await fetch(url, { credentials: "include", headers: serverHeaders() })
   } catch (err) {
     throw new TechnitiumApiError(`Could not reach the backend proxy: ${(err as Error).message}`, 0)
   }
