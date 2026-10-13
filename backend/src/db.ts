@@ -67,6 +67,12 @@ export function openDb(options: OpenDbOptions = {}): Database.Database {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  // The primary connection can be given a name like any other server; older
+  // databases predate that column.
+  const columns = db.prepare("PRAGMA table_info(app_config)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "name")) {
+    db.exec("ALTER TABLE app_config ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+  }
 
   const seed = options.seedAdmin !== undefined
     ? options.seedAdmin

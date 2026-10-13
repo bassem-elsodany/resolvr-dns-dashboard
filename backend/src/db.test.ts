@@ -15,7 +15,7 @@ describe("openDb", () => {
   it("creates an empty app_config row on first open", () => {
     const db = openDb({ path: ":memory:" });
     const row = db.prepare("SELECT * FROM app_config WHERE id = 1").get() as { base_url: string; token: string };
-    expect(row).toEqual({ id: 1, base_url: "", token: "" });
+    expect(row).toEqual({ id: 1, base_url: "", token: "", name: "" });
   });
 
   it("seeds an admin user when the users table is empty and seedAdmin is given", () => {

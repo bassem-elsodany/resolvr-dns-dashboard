@@ -28,8 +28,8 @@ describe("multiple servers", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.servers).toEqual([
-      { id: 0, name: "", baseUrl: "http://primary:5380", primary: true, configured: true },
-      { id: 1, name: "Segment 129", baseUrl: "http://s129:5380", primary: false, configured: true },
+      { id: 0, name: "", baseUrl: "http://primary:5380", primary: true, configured: true, managed: false },
+      { id: 1, name: "Segment 129", baseUrl: "http://s129:5380", primary: false, configured: true, managed: false },
     ]);
     expect(JSON.stringify(res.body)).not.toContain("t129");
     expect(JSON.stringify(res.body)).not.toContain("primary-token");
@@ -136,11 +136,79 @@ describe("multiple servers", () => {
     expect((await agent.get("/api/servers")).body.servers).toHaveLength(1);
   });
 
-  it("does not let the primary be removed or edited through the servers routes", async () => {
-    const { agent } = await setup(vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING)));
+  it("renames and removes the primary like any other server", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
 
+    const renamed = await agent.put("/api/servers/0").send({ name: "Segment 128" });
+    expect(renamed.status).toBe(200);
+    expect((await agent.get("/api/servers")).body.servers[0]).toMatchObject({ id: 0, name: "Segment 128" });
+
+    expect((await agent.delete("/api/servers/0")).status).toBe(200);
+    expect((await agent.get("/api/servers")).body.servers).toEqual([]);
     expect((await agent.delete("/api/servers/0")).status).toBe(404);
-    expect((await agent.put("/api/servers/0").send({ name: "x", baseUrl: "http://x:5380", token: "t" })).status).toBe(404);
+  });
+
+  it("falls back to the first remaining server when the primary was removed and no header is sent", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
+    await agent.post("/api/servers").send({ name: "Segment 129", baseUrl: "http://s129:5380", token: "t129" });
+    await agent.delete("/api/servers/0");
+    fetchImpl.mockClear();
+
+    await agent.get("/api/technitium/dashboard/stats/get");
+
+    expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://s129:5380/api/dashboard/stats/get");
+  });
+
+  it("puts the first server added into the primary slot when none is configured", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
+    await agent.delete("/api/servers/0");
+
+    const first = await agent.post("/api/servers").send({ name: "Main", baseUrl: "http://m:5380", token: "tm" });
+    const second = await agent.post("/api/servers").send({ name: "Other", baseUrl: "http://o:5380", token: "to" });
+
+    expect(first.body).toMatchObject({ id: 0, name: "Main", primary: true });
+    expect(second.body).toMatchObject({ id: 1, name: "Other", primary: false });
+  });
+
+  it("keeps an add-on managed primary: renamable, but not re-pointable or removable", async () => {
+    const db = openDb({ path: ":memory:", seedAdmin: ADMIN });
+    db.prepare("UPDATE app_config SET base_url = ?, token = ? WHERE id = 1").run("http://primary:5380", "primary-token");
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const app = createApp({
+      db,
+      fetchImpl,
+      addon: { options: {}, trustedPeers: new Set(), managed: true },
+    });
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send(ADMIN);
+
+    expect((await agent.get("/api/servers")).body.servers[0]).toMatchObject({ id: 0, managed: true });
+    expect((await agent.put("/api/servers/0").send({ name: "Home" })).status).toBe(200);
+    expect((await agent.put("/api/servers/0").send({ name: "Home", baseUrl: "http://x:5380", token: "t" })).status).toBe(409);
+    expect((await agent.delete("/api/servers/0")).status).toBe(409);
+  });
+
+  it("adds a column for the primary's name to a database made before it existed", async () => {
+    const Database = (await import("better-sqlite3")).default;
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fs = await import("node:fs");
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "resolvr-")), "old.db");
+    const old = new Database(file);
+    old.exec("CREATE TABLE app_config (id INTEGER PRIMARY KEY CHECK (id = 1), base_url TEXT NOT NULL DEFAULT '', token TEXT NOT NULL DEFAULT '');");
+    old.prepare("INSERT INTO app_config (id, base_url, token) VALUES (1, 'http://old:5380', 'old-token')").run();
+    old.close();
+
+    const db = openDb({ path: file });
+
+    expect(db.prepare("SELECT name, base_url, token FROM app_config WHERE id = 1").get()).toEqual({
+      name: "",
+      base_url: "http://old:5380",
+      token: "old-token",
+    });
   });
 
   it("renames a server without needing its token again, and without contacting it", async () => {

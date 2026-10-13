@@ -65,41 +65,12 @@ onMounted(() => {
   void connection.testConnection()
 })
 
-// What the switcher shows for a server: the name it was given, or for the
-// primary connection the name Technitium reports (else "Primary").
-function serverLabel(s: { id: number; name: string; primary: boolean; baseUrl: string }): string {
+// What the switcher shows for a server: the name it was given, else the name
+// Technitium reports for the one being observed, else its address.
+function serverLabel(s: { id: number; name: string; baseUrl: string }): string {
   if (s.name) return s.name
-  if (s.primary && s.id === connection.activeServerId && connection.serverDomain) return connection.serverDomain
-  return s.primary ? "Primary" : s.baseUrl
-}
-
-// Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
-// Zones, Apps, Server Info). Returns null to hide the badge — e.g. no
-// rate-limited clients, or a count that failed to load.
-function navBadge(to: string): number | null {
-  switch (to) {
-    case "/clients":
-      return sidebarCounts.rateLimitedClients > 0 ? sidebarCounts.rateLimitedClients : null
-    case "/zones":
-      return sidebarCounts.zonesTotal
-    case "/blocked":
-      return sidebarCounts.blockedZonesTotal
-    case "/apps":
-      return sidebarCounts.appsTotal
-    case "/server":
-      return serverUpdate.updateAvailable ? 1 : null
-    default:
-      return null
-  }
-}
-
-// Clients' badge is an alert (rate-limited devices) so it reads in
-// crit red, matching the wireframe; Server Info's is a warn-colored
-// update notice; everything else is a neutral count.
-function navBadgeClass(to: string): string {
-  if (to === "/clients") return "text-crit"
-  if (to === "/server") return "text-warn"
-  return "text-gray-500"
+  if (s.id === connection.activeServerId && connection.serverDomain) return connection.serverDomain
+  return s.baseUrl
 }
 </script>
 

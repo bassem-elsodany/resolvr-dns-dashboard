@@ -89,15 +89,17 @@ export function setServerConfig(
   return call("/api/config", { method: "PUT", body: JSON.stringify({ baseUrl, token }) })
 }
 
-// A Technitium server Resolvr observes. id 0 is the primary connection
-// (edited on the form above); the rest are added here and never carry a
-// token to the browser.
+// A Technitium server Resolvr observes; the token never reaches the browser.
+// id 0 is the first connection, kept under that id for older clients.
 export interface ObservedServer {
   id: number
   name: string
   baseUrl: string
   primary: boolean
   configured: boolean
+  // Set by the Home Assistant add-on's configuration: can be renamed here,
+  // but not re-pointed or removed.
+  managed?: boolean
 }
 
 export function listServers(): Promise<{ servers: ObservedServer[] }> {

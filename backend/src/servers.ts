@@ -22,8 +22,12 @@ interface ServerRow {
 }
 
 export function getPrimary(db: Database): ServerConnection {
-  const row = db.prepare("SELECT base_url, token FROM app_config WHERE id = 1").get() as { base_url: string; token: string };
-  return { id: 0, name: "", base_url: row.base_url, token: row.token };
+  const row = db.prepare("SELECT name, base_url, token FROM app_config WHERE id = 1").get() as {
+    name: string;
+    base_url: string;
+    token: string;
+  };
+  return { id: 0, name: row.name, base_url: row.base_url, token: row.token };
 }
 
 export function getServer(db: Database, id: number): ServerConnection | null {
@@ -49,5 +53,12 @@ export function requestedServerId(req: Request): number | null {
 // callers can tell "not configured" from "unknown".
 export function serverForRequest(db: Database, req: Request): ServerConnection | null {
   const id = requestedServerId(req);
-  return id === null ? null : getServer(db, id);
+  if (id === null) return null;
+  const server = getServer(db, id);
+  // No server named and the primary has been removed: the first one left is
+  // the default, so clients that send no header keep working.
+  if (id === 0 && req.header(SERVER_HEADER) === undefined && server && !(server.base_url && server.token)) {
+    return listExtraServers(db)[0] ?? server;
+  }
+  return server;
 }

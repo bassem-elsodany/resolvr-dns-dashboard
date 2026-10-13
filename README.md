@@ -66,9 +66,9 @@ The screenshots use made-up data: private-range IPs, generic device names, `exam
 
 ### Several separate servers
 
-Servers that are *not* joined in a Technitium cluster can be observed from the same dashboard. As an admin, open **Connection Settings > More servers** and add each one with a name, its URL and an API token. Each is checked against Technitium before it is saved. Once there is more than one, a **Server** switcher appears in the sidebar; picking one reloads the dashboard on that server, and every page, chart and admin action then applies to it. The choice is remembered per browser.
+Servers that are *not* joined in a Technitium cluster can be observed from the same dashboard. As an admin, open **Connection Settings**: every server is listed there with a name you can edit in place and a **Remove** button, and below the list you add another with a name, its URL and an API token. **Test** checks the URL and token against Technitium without saving; **Add server** checks them and saves. Once there is more than one server, a **Server** switcher appears in the sidebar; picking one reloads the dashboard on that server, and every page, chart and admin action then applies to it. The choice is remembered per browser.
 
-The connection above the list stays the primary one (it is also what the Home Assistant add-on configures), and a single-server install looks and behaves exactly as before. Servers are viewed one at a time: nothing is merged across servers that are not in a cluster.
+A single-server install looks and behaves as before, and the Home Assistant add-on's server is shown in the list but is still set in the add-on's Configuration tab. Servers are viewed one at a time: nothing is merged across servers that are not in a cluster.
 
 ## Architecture
 

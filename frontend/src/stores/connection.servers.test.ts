@@ -31,7 +31,7 @@ describe("connection store: several servers", () => {
     expect(store.activeServerId).toBe(0)
   })
 
-  it("falls back to the primary when the chosen server no longer exists", async () => {
+  it("falls back to the first server left when the chosen one no longer exists", async () => {
     setActiveServerId(7)
     setActivePinia(createPinia())
     vi.mocked(listServers).mockResolvedValue({ servers: [PRIMARY, SECOND] })
@@ -42,6 +42,14 @@ describe("connection store: several servers", () => {
 
     expect(store.activeServerId).toBe(0)
     expect(getActiveServerId()).toBe(0)
+
+    setActiveServerId(7)
+    setActivePinia(createPinia())
+    vi.mocked(listServers).mockResolvedValue({ servers: [SECOND] })
+    const other = useConnectionStore()
+    await other.loadServers()
+    expect(other.activeServerId).toBe(2)
+    expect(getActiveServerId()).toBe(2)
   })
 
   it("keeps working as a single-server dashboard when the list cannot be loaded", async () => {
