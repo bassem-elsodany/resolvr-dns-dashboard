@@ -37,34 +37,35 @@ const addingServer = ref(false)
 const testingServer = ref(false)
 // Names being edited, by server id; absent means "as saved".
 const nameDrafts = ref<Record<number, string>>({})
-const savingName = ref<number | null>(null)
+const extraServers = computed(() => connection.servers.filter((s) => !s.primary))
 
 function draftFor(id: number, saved: string): string {
   return nameDrafts.value[id] ?? saved
-}
-
-function nameChanged(id: number, saved: string): boolean {
-  const draft = nameDrafts.value[id]
-  return draft !== undefined && draft.trim() !== "" && draft.trim() !== saved
 }
 
 function messageOf(err: unknown, fallback: string): string {
   return err instanceof AppApiError ? err.message : fallback
 }
 
-async function onSaveName(id: number, baseUrl: string) {
+function onCancelName(id: number) {
+  delete nameDrafts.value[id]
+}
+
+// Saves a renamed server when its field loses focus. Unchanged or emptied
+// names just go back to what is saved.
+async function onSaveName(id: number, saved: string, baseUrl: string) {
   const name = nameDrafts.value[id]?.trim()
-  if (!name) return
+  if (!name || name === saved) {
+    delete nameDrafts.value[id]
+    return
+  }
   serverError.value = null
-  savingName.value = id
   try {
     await updateServer(id, name)
     delete nameDrafts.value[id]
     await connection.loadServers()
   } catch (err) {
     serverError.value = `${baseUrl}: ${messageOf(err, "Could not rename the server.")}`
-  } finally {
-    savingName.value = null
   }
 }
 
@@ -198,97 +199,77 @@ async function onTestConnection() {
     </form>
 
     <section id="more-servers" class="mt-12 border-t border-border pt-8">
-      <h2 class="text-lg font-semibold tracking-tight">Servers</h2>
+      <h2 class="text-lg font-semibold tracking-tight">More servers</h2>
       <p class="mt-1 text-sm text-gray-500">
-        Observe several Technitium servers from this dashboard &mdash; for example separate instances that
-        are not in one cluster. Pick the one to look at with the switcher in the sidebar.
+        Observe other Technitium servers from this same dashboard &mdash; for example separate instances
+        that are not in one cluster. Pick the one to look at with the switcher in the sidebar.
       </p>
 
-      <h3 class="mt-6 text-xs font-bold uppercase tracking-wide text-gray-500">Connected servers</h3>
-      <ul id="server-list" class="mt-2 flex flex-col gap-2">
+      <ul v-if="extraServers.length" id="server-list" class="mt-4 flex flex-col gap-2">
         <li
-          v-for="s in connection.servers"
+          v-for="s in extraServers"
           :key="s.id"
-          class="flex items-center gap-3 rounded-lg border border-border bg-background-card px-3 py-2 text-sm"
+          class="flex items-center justify-between gap-3 rounded-lg border border-border bg-background-card px-3 py-2 text-sm"
         >
           <div class="min-w-0 flex-1">
-            <template v-if="s.primary">
-              <div class="truncate font-semibold">
-                {{ s.id === connection.activeServerId && connection.serverDomain ? connection.serverDomain : "Primary" }}
-                <span class="ml-1.5 rounded border border-border-hover px-1 text-[10px] font-semibold uppercase text-gray-500">Primary</span>
-              </div>
-            </template>
+            <!-- The name reads as text and is edited in place: Enter or leaving the field saves it. -->
             <input
-              v-else
               :value="draftFor(s.id, s.name)"
               type="text"
               maxlength="80"
               :aria-label="`Name of ${s.baseUrl}`"
-              class="w-full rounded-md border border-border bg-background-canvas px-2 py-1 text-sm font-semibold text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              title="Click to rename"
+              class="w-full rounded border border-transparent bg-transparent px-1 py-0.5 -mx-1 font-semibold text-fg hover:border-border-hover focus:border-accent focus:bg-background-canvas focus:outline-none"
               @input="nameDrafts[s.id] = ($event.target as HTMLInputElement).value"
-              @keydown.enter.prevent="onSaveName(s.id, s.baseUrl)"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+              @keydown.esc.prevent="onCancelName(s.id)"
+              @blur="onSaveName(s.id, s.name, s.baseUrl)"
             />
-            <div class="mt-0.5 truncate font-mono text-xs text-gray-500">{{ s.baseUrl }}</div>
+            <div class="truncate font-mono text-xs text-gray-500">{{ s.baseUrl }}</div>
           </div>
-          <template v-if="!s.primary">
-            <button
-              v-if="nameChanged(s.id, s.name)"
-              type="button"
-              :disabled="savingName === s.id"
-              class="flex-none rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
-              @click="onSaveName(s.id, s.baseUrl)"
-            >
-              {{ savingName === s.id ? "Saving…" : "Save" }}
-            </button>
-            <button
-              type="button"
-              class="flex-none text-xs font-semibold text-crit"
-              :aria-label="`Remove ${s.name}`"
-              @click="onRemoveServer(s.id)"
-            >
-              Remove
-            </button>
-          </template>
+          <button
+            type="button"
+            class="flex-none text-xs font-semibold text-crit"
+            :aria-label="`Remove ${s.name}`"
+            @click="onRemoveServer(s.id)"
+          >
+            Remove
+          </button>
         </li>
       </ul>
-      <p v-if="connection.servers.length <= 1" class="mt-2 text-xs text-gray-500">
-        The primary connection above is the only server so far.
-      </p>
 
-      <h3 class="mt-8 text-xs font-bold uppercase tracking-wide text-gray-500">Add a server</h3>
-      <form class="mt-2 flex flex-col gap-3" @submit.prevent="onAddServer">
-        <div class="flex flex-col gap-1.5">
-          <label for="new-server-name" class="text-xs font-semibold text-gray-500">Name</label>
-          <input
-            id="new-server-name"
-            v-model="newName"
-            type="text"
-            maxlength="80"
-            placeholder="Segment 129"
-            class="w-full rounded-md border border-border bg-background-card px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label for="new-server-url" class="text-xs font-semibold text-gray-500">Server URL</label>
-          <input
-            id="new-server-url"
-            v-model="newUrl"
-            type="text"
-            placeholder="http://192.168.1.54:5380"
-            class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label for="new-server-token" class="text-xs font-semibold text-gray-500">API token</label>
-          <input
-            id="new-server-token"
-            v-model="newToken"
-            type="password"
-            placeholder="Paste the server's API token"
-            class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+      <form class="mt-4 flex flex-col gap-3" @submit.prevent="onAddServer">
+        <input
+          id="new-server-name"
+          v-model="newName"
+          type="text"
+          maxlength="80"
+          placeholder="Name, e.g. Segment 129"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <input
+          id="new-server-url"
+          v-model="newUrl"
+          type="text"
+          placeholder="http://192.168.1.54:5380"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <input
+          id="new-server-token"
+          v-model="newToken"
+          type="password"
+          placeholder="API token"
+          class="w-full rounded-md border border-border bg-background-card px-3 py-2 font-mono text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
         <div class="flex flex-wrap items-center gap-3">
+          <button
+            id="add-server"
+            type="submit"
+            :disabled="addingServer || !newName.trim() || !newUrl.trim() || !newToken.trim()"
+            class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {{ addingServer ? "Adding…" : "Add server" }}
+          </button>
           <button
             id="test-new-server"
             type="button"
@@ -297,14 +278,6 @@ async function onTestConnection() {
             @click="onTestNewServer"
           >
             {{ testingServer ? "Testing…" : "Test" }}
-          </button>
-          <button
-            id="add-server"
-            type="submit"
-            :disabled="addingServer || !newName.trim() || !newUrl.trim() || !newToken.trim()"
-            class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {{ addingServer ? "Adding…" : "Add" }}
           </button>
           <span
             v-if="testResult"

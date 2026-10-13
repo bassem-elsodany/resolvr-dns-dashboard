@@ -38,37 +38,45 @@ describe("ConnectView: servers", () => {
     vi.mocked(listServers).mockResolvedValue({ servers: [PRIMARY, SECOND] })
   })
 
-  it("lists the existing connections, with the primary not editable or removable", async () => {
+  it("lists the added servers with their name and URL, not the primary", async () => {
     const wrapper = await mountView()
 
     const rows = wrapper.findAll("#server-list li")
-    expect(rows).toHaveLength(2)
-    expect(rows[0]!.text()).toContain("Primary")
-    expect(rows[0]!.find("input").exists()).toBe(false)
-    expect(rows[0]!.text()).not.toContain("Remove")
-    expect((rows[1]!.find("input").element as HTMLInputElement).value).toBe("Segment 129")
-    expect(rows[1]!.text()).toContain("http://b:5380")
+    expect(rows).toHaveLength(1)
+    expect((rows[0]!.find("input").element as HTMLInputElement).value).toBe("Segment 129")
+    expect(rows[0]!.text()).toContain("http://b:5380")
+    expect(rows[0]!.text()).toContain("Remove")
   })
 
-  it("renames a server from its row, only offering Save once the name changed", async () => {
+  it("renames a server in place when the field is left", async () => {
     vi.mocked(updateServer).mockResolvedValue({ ...SECOND, name: "DMZ" })
     const wrapper = await mountView()
-    const row = wrapper.findAll("#server-list li")[1]!
-    expect(row.text()).not.toContain("Save")
+    const input = wrapper.find("#server-list li input")
 
-    await row.find("input").setValue("DMZ")
-    expect(row.text()).toContain("Save")
-    await row.findAll("button").find((b) => b.text() === "Save")!.trigger("click")
+    await input.setValue("DMZ")
+    await input.trigger("blur")
     await flushPromises()
 
     expect(updateServer).toHaveBeenCalledWith(2, "DMZ")
+  })
+
+  it("does not save when the name is unchanged or emptied", async () => {
+    const wrapper = await mountView()
+    const input = wrapper.find("#server-list li input")
+
+    await input.trigger("blur")
+    await input.setValue("   ")
+    await input.trigger("blur")
+    await flushPromises()
+
+    expect(updateServer).not.toHaveBeenCalled()
   })
 
   it("removes a server from its row", async () => {
     vi.mocked(removeServer).mockResolvedValue({ status: "ok" })
     const wrapper = await mountView()
 
-    await wrapper.findAll("#server-list li")[1]!.findAll("button").find((b) => b.text() === "Remove")!.trigger("click")
+    await wrapper.find("#server-list li button").trigger("click")
     await flushPromises()
 
     expect(removeServer).toHaveBeenCalledWith(2)
