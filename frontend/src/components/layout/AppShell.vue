@@ -72,6 +72,35 @@ function serverLabel(s: { id: number; name: string; baseUrl: string }): string {
   if (s.id === connection.activeServerId && connection.serverDomain) return connection.serverDomain
   return s.baseUrl
 }
+
+// Matches the wireframe's sidebar count badges (Clients, Zones, Blocked
+// Zones, Apps, Server Info). Returns null to hide the badge — e.g. no
+// rate-limited clients, or a count that failed to load.
+function navBadge(to: string): number | null {
+  switch (to) {
+    case "/clients":
+      return sidebarCounts.rateLimitedClients > 0 ? sidebarCounts.rateLimitedClients : null
+    case "/zones":
+      return sidebarCounts.zonesTotal
+    case "/blocked":
+      return sidebarCounts.blockedZonesTotal
+    case "/apps":
+      return sidebarCounts.appsTotal
+    case "/server":
+      return serverUpdate.updateAvailable ? 1 : null
+    default:
+      return null
+  }
+}
+
+// Clients' badge is an alert (rate-limited devices) so it reads in
+// crit red, matching the wireframe; Server Info's is a warn-colored
+// update notice; everything else is a neutral count.
+function navBadgeClass(to: string): string {
+  if (to === "/clients") return "text-crit"
+  if (to === "/server") return "text-warn"
+  return "text-gray-500"
+}
 </script>
 
 <template>
