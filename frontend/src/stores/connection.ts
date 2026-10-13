@@ -25,6 +25,10 @@ export const useConnectionStore = defineStore("connection", () => {
   // Every server this dashboard can observe, and which one this browser is
   // looking at (0 is the primary connection).
   const servers = ref<ObservedServer[]>([])
+  // The result of the last save of the primary connection form. Separate from
+  // serverDomain/serverVersion above, which describe whichever server the
+  // sidebar has selected and so may be a different one.
+  const primaryResult = ref<{ serverDomain: string; serverVersion: string } | null>(null)
   const activeServerId = ref(getActiveServerId())
 
   // No longer actually sent anywhere (see api/technitium.ts) — kept so
@@ -94,6 +98,7 @@ export const useConnectionStore = defineStore("connection", () => {
       token.value = newToken
       // The form edits the primary connection; the status panel shows the
       // server being observed, which may be another one.
+      primaryResult.value = { serverDomain: res.serverDomain, serverVersion: res.serverVersion }
       if (activeServerId.value === 0) {
         isConfigured.value = true
         status.value = "connected"
@@ -131,6 +136,7 @@ export const useConnectionStore = defineStore("connection", () => {
     clusterInitialized,
     credentials,
     servers,
+    primaryResult,
     activeServerId,
     loadServers,
     selectServer,

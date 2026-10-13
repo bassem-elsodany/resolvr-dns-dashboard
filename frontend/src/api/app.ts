@@ -108,8 +108,15 @@ export function addServer(name: string, baseUrl: string, token: string): Promise
   return call("/api/servers", { method: "POST", body: JSON.stringify({ name, baseUrl, token }) })
 }
 
-export function updateServer(id: number, name: string, baseUrl: string, token: string): Promise<ObservedServer> {
-  return call(`/api/servers/${id}`, { method: "PUT", body: JSON.stringify({ name, baseUrl, token }) })
+// Renames a server. Passing a new URL and token as well re-points it (the
+// backend checks them against Technitium first).
+export function updateServer(id: number, name: string, connection?: { baseUrl: string; token: string }): Promise<ObservedServer> {
+  return call(`/api/servers/${id}`, { method: "PUT", body: JSON.stringify({ name, ...connection }) })
+}
+
+// Checks a URL and token without saving them.
+export function testServer(baseUrl: string, token: string): Promise<{ status: string; serverDomain?: string; serverVersion?: string }> {
+  return call("/api/servers/test", { method: "POST", body: JSON.stringify({ baseUrl, token }) })
 }
 
 export function removeServer(id: number): Promise<{ status: string }> {

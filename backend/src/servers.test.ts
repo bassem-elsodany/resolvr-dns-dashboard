@@ -142,4 +142,58 @@ describe("multiple servers", () => {
     expect((await agent.delete("/api/servers/0")).status).toBe(404);
     expect((await agent.put("/api/servers/0").send({ name: "x", baseUrl: "http://x:5380", token: "t" })).status).toBe(404);
   });
+
+  it("renames a server without needing its token again, and without contacting it", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING));
+    const { agent } = await setup(fetchImpl);
+    await agent.post("/api/servers").send({ name: "Old", baseUrl: "http://s:5380", token: "tok" });
+    fetchImpl.mockClear();
+
+    const res = await agent.put("/api/servers/1").send({ name: "Renamed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: 1, name: "Renamed", baseUrl: "http://s:5380" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    // The token was kept: the proxy still uses it.
+    await agent.get("/api/technitium/dashboard/stats/get").set("X-Resolvr-Server", "1");
+    expect(new Headers(fetchImpl.mock.calls[0]![1]?.headers).get("Authorization")).toBe("Bearer tok");
+  });
+
+  it("refuses a new URL without a token (or the reverse)", async () => {
+    const { agent } = await setup(vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING)));
+    await agent.post("/api/servers").send({ name: "S", baseUrl: "http://s:5380", token: "tok" });
+
+    expect((await agent.put("/api/servers/1").send({ name: "S", baseUrl: "http://other:5380" })).status).toBe(400);
+    expect((await agent.put("/api/servers/1").send({ name: "S", token: "x" })).status).toBe(400);
+  });
+
+  it("tests a URL and token without saving them", async () => {
+    const { agent, db } = await setup(vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING)));
+
+    const res = await agent.post("/api/servers/test").send({ baseUrl: "http://new:5380", token: "t" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "ok", serverDomain: "dns.example.lan", serverVersion: "15.4" });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM servers").get()).toEqual({ n: 0 });
+  });
+
+  it("reports why a test failed", async () => {
+    const { agent } = await setup(
+      vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse({ status: "invalid-token", errorMessage: "Invalid token" })),
+    );
+
+    const res = await agent.post("/api/servers/test").send({ baseUrl: "http://new:5380", token: "bad" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("Invalid token");
+  });
+
+  it("only lets an admin test", async () => {
+    const { app, agent } = await setup(vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(OK_PING)));
+    await agent.post("/api/users").send({ username: "viewer1", password: "viewer-password-123", role: "viewer" });
+    const viewer = request.agent(app);
+    await viewer.post("/api/auth/login").send({ username: "viewer1", password: "viewer-password-123" });
+
+    expect((await viewer.post("/api/servers/test").send({ baseUrl: "http://x:5380", token: "t" })).status).toBe(403);
+  });
 });
